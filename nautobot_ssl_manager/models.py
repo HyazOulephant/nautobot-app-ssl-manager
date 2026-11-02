@@ -1,0 +1,36 @@
+"""Models for Nautobot SSL Manager."""
+
+# Django imports
+from django.db import models
+
+# Nautobot imports
+from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
+from nautobot.apps.models import PrimaryModel, extras_features
+
+
+# If you want to choose a specific model to overload in your class declaration, please reference the following documentation:
+# how to chose a database model: https://docs.nautobot.com/projects/core/en/stable/plugins/development/#database-models
+# If you want to use the extras_features decorator please reference the following documentation
+# https://docs.nautobot.com/projects/core/en/stable/development/core/model-checklist/#extras-features
+@extras_features("custom_links", "custom_validators", "export_templates", "graphql", "webhooks")
+class NautobotSslManagerExampleModel(PrimaryModel):  # pylint: disable=too-many-ancestors
+    """Base model for Nautobot SSL Manager app."""
+
+    name = models.CharField(max_length=CHARFIELD_MAX_LENGTH, unique=True)
+    description = models.CharField(max_length=CHARFIELD_MAX_LENGTH, blank=True)
+    # additional model fields
+
+    class Meta:
+        """Meta class."""
+
+        ordering = ["name"]
+
+        # Option for fixing capitalization (i.e. "Snmp" vs "SNMP")
+        # verbose_name = "Nautobot SSL Manager"
+
+        # Option for fixing plural name (i.e. "Chicken Tenders" vs "Chicken Tendies")
+        # verbose_name_plural = "Nautobot SSL Managers"
+
+    def __str__(self):
+        """Stringify instance."""
+        return self.name

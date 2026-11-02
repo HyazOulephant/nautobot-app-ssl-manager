@@ -1,0 +1,30 @@
+{
+    "cookiecutter": {
+        "codeowner_github_usernames": "HyazOulephant",
+        "full_name": "HyazOulephant",
+        "email": "36076236+HyazOulephant@users.noreply.github.com",
+        "github_org": "HyazOulephant",
+        "app_name": "nautobot_ssl_manager",
+        "verbose_name": "Nautobot SSL Manager",
+        "app_slug": "nautobot-ssl-manager",
+        "project_slug": "nautobot-app-ssl-manager",
+        "repo_url": "https://github.com/HyazOulephant/nautobot-app-ssl-manager",
+        "base_url": "nautobot-ssl-manager",
+        "camel_name": "NautobotSslManager",
+        "project_short_description": "Nautobot application for SSL/TLS certificate inventory, PKI management and DCV validation",
+        "model_class_name": "NautobotSslManagerExampleModel",
+        "open_source_license": "Apache-2.0",
+        "docs_base_url": "https://docs.nautobot.com",
+        "docs_app_url": "https://docs.nautobot.com/projects/nautobot-ssl-manager/en/latest",
+        "__commercial": false,
+        "_extensions": [
+            "local_extensions.camel_case_to_kebab",
+            "local_extensions.camel_case_to_words",
+            "local_extensions.NautobotVersions"
+        ],
+        "_template": "https://github.com/nautobot/cookiecutter-nautobot-app.git",
+        "_output_dir": "/home/hchaigne/Documents/repositories/perso",
+        "_repo_dir": "/home/hchaigne/.cookiecutters/cookiecutter-nautobot-app/nautobot-app",
+        "_checkout": null
+    }
+}
