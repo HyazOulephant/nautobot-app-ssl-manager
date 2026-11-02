@@ -10,9 +10,8 @@ from nautobot_ssl_manager import views
 app_name = "nautobot_ssl_manager"
 router = NautobotUIViewSetRouter()
 
-# The standard is for the route to be the hyphenated version of the model class name plural.
-# for example, ExampleModel would be example-models.
-router.register("nautobot-ssl-manager-example-models", views.NautobotSslManagerExampleModelUIViewSet)
+router.register("certificate-providers", views.CertificateProviderUIViewSet)
+router.register("certificate-authorities", views.CertificateAuthorityUIViewSet)
 
 
 urlpatterns = [

@@ -113,7 +113,8 @@ nav:
       - Frequently Asked Questions: "user/faq.md"
       - External Interactions: "user/external_interactions.md"
       - Data Models:
-          - Nautobot Ssl Manager Example Model: "models/nautobotsslmanagerexamplemodel.md"
+          - Certificate Authority: "models/certificateauthority.md"
+          - Certificate Provider: "models/certificateprovider.md"
   - Administrator Guide:
       - Install and Configure: "admin/install.md"
       - Upgrade: "admin/upgrade.md"

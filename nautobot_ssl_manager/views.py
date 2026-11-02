@@ -1,51 +1,63 @@
 """Views for nautobot_ssl_manager."""
 
-from nautobot.apps.ui import ObjectDetailContent, ObjectFieldsPanel, SectionChoices
+from nautobot.apps.ui import ObjectDetailContent, ObjectFieldsPanel, ObjectsTablePanel, SectionChoices
 from nautobot.apps.views import NautobotUIViewSet
+from nautobot.core.templatetags import helpers
 
 from nautobot_ssl_manager import filters, forms, models, tables
 from nautobot_ssl_manager.api import serializers
 
 
-class NautobotSslManagerExampleModelUIViewSet(NautobotUIViewSet):
-    """ViewSet for NautobotSslManagerExampleModel views."""
+class CertificateProviderUIViewSet(NautobotUIViewSet):
+    """ViewSet for CertificateProvider views."""
 
-    bulk_update_form_class = forms.NautobotSslManagerExampleModelBulkEditForm
-    filterset_class = filters.NautobotSslManagerExampleModelFilterSet
-    filterset_form_class = forms.NautobotSslManagerExampleModelFilterForm
-    form_class = forms.NautobotSslManagerExampleModelForm
+    bulk_update_form_class = forms.CertificateProviderBulkEditForm
+    filterset_class = filters.CertificateProviderFilterSet
+    filterset_form_class = forms.CertificateProviderFilterForm
+    form_class = forms.CertificateProviderForm
     lookup_field = "pk"
-    queryset = models.NautobotSslManagerExampleModel.objects.all()
-    serializer_class = serializers.NautobotSslManagerExampleModelSerializer
-    table_class = tables.NautobotSslManagerExampleModelTable
+    queryset = models.CertificateProvider.objects.all()
+    serializer_class = serializers.CertificateProviderSerializer
+    table_class = tables.CertificateProviderTable
 
-    # Here is an example of using the UI  Component Framework for the detail view.
-    # More information can be found in the Nautobot documentation:
-    # https://docs.nautobot.com/projects/core/en/stable/development/core/ui-component-framework/
     object_detail_content = ObjectDetailContent(
         panels=[
             ObjectFieldsPanel(
                 weight=100,
                 section=SectionChoices.LEFT_HALF,
-                fields="__all__",
-                # Alternatively, you can specify a list of field names:
-                # fields=[
-                #     "name",
-                #     "description",
-                # ],
-                # Some fields may require additional configuration, we can use value_transforms
-                # value_transforms={
-                #     "name": [helpers.bettertitle]
-                # },
+                fields=["name", "description", "portal_url", "tenant"],
+                value_transforms={"portal_url": [helpers.hyperlinked_field]},
             ),
-            # If there is a ForeignKey or M2M with this model we can use ObjectsTablePanel
-            # to display them in a table format.
-            # ObjectsTablePanel(
-            # weight=200,
-            # section=SectionChoices.RIGHT_HALF,
-            # table_class=tables.NautobotSslManagerExampleModelTable,
-            # You will want to filter the table using the related_name
-            # filter="nautobotsslmanagerexamplemodels",
-            # ),
+            ObjectsTablePanel(
+                weight=100,
+                section=SectionChoices.FULL_WIDTH,
+                table_class=tables.CertificateAuthorityTable,
+                table_filter="provider",
+                exclude_columns=["provider"],
+            ),
+        ],
+    )
+
+
+class CertificateAuthorityUIViewSet(NautobotUIViewSet):
+    """ViewSet for CertificateAuthority views."""
+
+    bulk_update_form_class = forms.CertificateAuthorityBulkEditForm
+    filterset_class = filters.CertificateAuthorityFilterSet
+    filterset_form_class = forms.CertificateAuthorityFilterForm
+    form_class = forms.CertificateAuthorityForm
+    lookup_field = "pk"
+    queryset = models.CertificateAuthority.objects.all()
+    serializer_class = serializers.CertificateAuthoritySerializer
+    table_class = tables.CertificateAuthorityTable
+
+    object_detail_content = ObjectDetailContent(
+        panels=[
+            ObjectFieldsPanel(
+                weight=100,
+                section=SectionChoices.LEFT_HALF,
+                fields=["name", "type", "status", "provider", "description", "portal_url", "tenant"],
+                value_transforms={"portal_url": [helpers.hyperlinked_field]},
+            ),
         ],
     )

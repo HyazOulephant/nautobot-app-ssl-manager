@@ -5,14 +5,21 @@ from nautobot.apps.api import NautobotModelSerializer, TaggedModelSerializerMixi
 from nautobot_ssl_manager import models
 
 
-class NautobotSslManagerExampleModelSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):  # pylint: disable=too-many-ancestors
-    """NautobotSslManagerExampleModel Serializer."""
+class CertificateProviderSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):  # pylint: disable=too-many-ancestors
+    """CertificateProvider Serializer."""
 
     class Meta:
         """Meta attributes."""
 
-        model = models.NautobotSslManagerExampleModel
+        model = models.CertificateProvider
         fields = "__all__"
 
-        # Option for disabling write for certain fields:
-        # read_only_fields = []
+
+class CertificateAuthoritySerializer(NautobotModelSerializer, TaggedModelSerializerMixin):  # pylint: disable=too-many-ancestors
+    """CertificateAuthority Serializer."""
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.CertificateAuthority
+        fields = "__all__"
