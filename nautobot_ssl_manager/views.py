@@ -289,7 +289,6 @@ class CertificateUIViewSet(NautobotUIViewSet):
                 label="PEM",
                 object_field="pem",
                 render_as=BaseTextPanel.RenderOptions.CODE,
-                collapsed=True,
             ),
         ],
     )
