@@ -3,7 +3,7 @@ dev_addr: "127.0.0.1:8001"
 edit_uri: "edit/main/docs"
 site_dir: "nautobot_ssl_manager/static/nautobot_ssl_manager/docs"
 site_name: "Nautobot SSL Manager Documentation"
-site_url: "https://docs.nautobot.com/projects/nautobot-ssl-manager/en/latest/"
+site_url: "https://nautobot-app-ssl-manager.readthedocs.io/en/latest/"
 repo_url: "https://github.com/HyazOulephant/nautobot-app-ssl-manager"
 copyright: "Copyright &copy; The Authors"
 theme:
