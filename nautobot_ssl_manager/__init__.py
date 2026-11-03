@@ -20,7 +20,7 @@ class NautobotSslManagerConfig(NautobotAppConfig):
     required_settings = []
     default_settings = {}
     docs_view_name = "plugins:nautobot_ssl_manager:docs"
-    searchable_models = ["nautobotsslmanagerexamplemodel"]
+    searchable_models = ["certificate", "certificateauthority", "certificateprovider"]
 
 
 config = NautobotSslManagerConfig  # pylint:disable=invalid-name

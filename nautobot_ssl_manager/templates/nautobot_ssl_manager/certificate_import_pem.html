@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load form_helpers %}
+
+{% block title %}Import a certificate from PEM{% endblock %}
+
+{% block content %}
+    <form action="" method="post" class="h-100 vstack">
+        {% csrf_token %}
+        <div class="row justify-content-center align-content-start flex-fill">
+            <div class="col-lg-8 col-md-10">
+                {% if form.non_field_errors %}
+                    <div class="card border-danger mb-16">
+                        <div class="card-header bg-danger-subtle border-danger text-body">
+                            <strong>Errors</strong>
+                        </div>
+                        <div class="card-body">{{ form.non_field_errors }}</div>
+                    </div>
+                {% endif %}
+                <div class="card">
+                    <div class="card-header"><strong>Certificate</strong></div>
+                    <div class="card-body">
+                        <p class="text-secondary">
+                            Paste the public certificate. Its data (Common Name, SANs, serial number, fingerprint,
+                            validity, key, Extended Key Usage and validation level) is read from the certificate and
+                            pre-filled on the next page, where you complete and review it before saving.
+                        </p>
+                        {% render_form form %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="nb-form-sticky-footer">
+            <button type="submit" class="btn btn-primary">
+                <span class="mdi mdi-arrow-right" aria-hidden="true"></span> Continue
+            </button>
+            <a href="{% url "plugins:nautobot_ssl_manager:certificate_list" %}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+{% endblock content %}

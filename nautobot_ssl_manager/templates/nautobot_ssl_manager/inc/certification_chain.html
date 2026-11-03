@@ -1,0 +1,20 @@
+{% load helpers %}
+{% if chain_nodes %}
+    <ul class="list-unstyled mb-0">
+        {% for node in chain_nodes %}
+            <li class="py-4" style="padding-left: {% widthratio forloop.counter0 1 24 %}px">
+                {% if not forloop.first %}<span class="mdi mdi-subdirectory-arrow-right text-secondary" aria-hidden="true"></span>{% endif %}
+                <span class="mdi {{ node.icon }}" aria-hidden="true"></span>
+                {% if node.is_current %}
+                    <strong>{{ node.object }}</strong>
+                {% else %}
+                    {{ node.object|hyperlinked_object:"name" }}
+                {% endif %}
+                <span class="badge bg-secondary">{{ node.role }}</span>
+                {% if node.object.status %}{{ node.object.status|hyperlinked_object_with_color }}{% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <span class="text-secondary">No Certificate Authority set.</span>
+{% endif %}

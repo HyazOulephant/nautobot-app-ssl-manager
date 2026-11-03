@@ -1,0 +1,37 @@
+{% extends "generic/object_create.html" %}
+{% load form_helpers %}
+
+{% block form %}
+    <div class="card">
+        <div class="card-header"><strong>Certificate</strong></div>
+        <div class="card-body">
+            {% render_field form.name %}
+            {% render_field form.common_name %}
+            {% render_field form.subject_alternative_names %}
+            {% render_field form.status %}
+            {% render_field form.certificate_authority %}
+            {% render_field form.not_before %}
+            {% render_field form.not_after %}
+            {% render_field form.replaces %}
+            {% render_field form.auto_renew %}
+            {% render_field form.order_number %}
+            {% render_field form.key_algorithm %}
+            {% render_field form.key_size %}
+            {% render_field form.extended_key_usage %}
+            {% render_field form.validation_level %}
+            {% render_field form.serial_number %}
+            {% render_field form.fingerprint_sha256 %}
+            {% render_field form.pem %}
+            {% render_field form.description %}
+            {% render_field form.tenant_group %}
+            {% render_field form.tenant %}
+        </div>
+    </div>
+    {% include "inc/extras_features_edit_form_fields.html" %}
+    <div class="card">
+        <div class="card-header"><strong>Comments</strong></div>
+        <div class="card-body">
+            {% render_field form.comments %}
+        </div>
+    </div>
+{% endblock form %}
