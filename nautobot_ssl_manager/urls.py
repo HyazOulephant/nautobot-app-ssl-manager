@@ -10,6 +10,7 @@ from nautobot_ssl_manager import views
 app_name = "nautobot_ssl_manager"
 router = NautobotUIViewSetRouter()
 
+router.register("certificates", views.CertificateUIViewSet)
 router.register("certificate-providers", views.CertificateProviderUIViewSet)
 router.register("certificate-authorities", views.CertificateAuthorityUIViewSet)
 

@@ -1,11 +1,19 @@
 """Create fixtures for tests."""
 
+from datetime import timedelta
+
 from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
 from nautobot.extras.models import Status
 from nautobot.tenancy.models import Tenant, TenantGroup
 
-from nautobot_ssl_manager.choices import CertificateAuthorityTypeChoices
-from nautobot_ssl_manager.models import CertificateAuthority, CertificateProvider
+from nautobot_ssl_manager.choices import (
+    CertificateAuthorityTypeChoices,
+    ExtendedKeyUsageChoices,
+    KeyAlgorithmChoices,
+    ValidationLevelChoices,
+)
+from nautobot_ssl_manager.models import Certificate, CertificateAuthority, CertificateProvider
 
 
 def create_tenants():
@@ -86,10 +94,107 @@ def create_certificate_authorities():
         portal_url="https://pki.example.com/issuing",
         tenant=tenant_three,
     )
-    CertificateAuthority.objects.create(
+    lab_root = CertificateAuthority.objects.create(
         name="Lab Root CA",
         type=CertificateAuthorityTypeChoices.TYPE_PRIVATE,
         status=active,
     )
+    # Chain: Lab Root CA (Root) -> Internal Issuing CA (Intermediate)
+    CertificateAuthority.objects.filter(name="Internal Issuing CA").update(parent=lab_root)
     # Provider without any CA (needed for `has_certificate_authorities=False` filter tests)
     CertificateProvider.objects.create(name="Unused Provider", description="Provider without CA")
+
+
+def get_certificate_statuses():
+    """Return the statuses associated with Certificate (Planned, Active, Revoked, Retired)."""
+    content_type = ContentType.objects.get_for_model(Certificate)
+    return [
+        Status.objects.get(name=name, content_types=content_type)
+        for name in ("Planned", "Active", "Revoked", "Retired")
+    ]
+
+
+def create_certificates():
+    """Create Certificate objects (and their CAs, providers and tenants) for tests."""
+    create_certificate_authorities()
+    tenant_one, tenant_two, tenant_three = create_tenants()
+    planned, active, revoked, retired = get_certificate_statuses()
+    sectigo_ca = CertificateAuthority.objects.get(name="Sectigo RSA Domain Validation")
+    edge_ca = CertificateAuthority.objects.get(name="Google Trust Services WE1")
+    internal_ca = CertificateAuthority.objects.get(name="Internal Issuing CA")
+    now = timezone.now()
+
+    old_www = Certificate.objects.create(
+        name="www.example.com 2025",
+        common_name="www.example.com",
+        subject_alternative_names=["www.example.com", "example.com"],
+        certificate_authority=sectigo_ca,
+        serial_number="0a1b2c",
+        fingerprint_sha256="a" * 64,
+        not_before=now - timedelta(days=400),
+        not_after=now - timedelta(days=35),
+        status=retired,
+        auto_renew=False,
+        order_number="ORD-001",
+        key_algorithm=KeyAlgorithmChoices.RSA,
+        key_size=2048,
+        validation_level=ValidationLevelChoices.DV,
+        extended_key_usage=[ExtendedKeyUsageChoices.SERVER_AUTH],
+        tenant=tenant_one,
+        description="Old www certificate",
+        comments="Expired",
+    )
+    Certificate.objects.create(
+        name="www.example.com 2026",
+        common_name="www.example.com",
+        subject_alternative_names=["www.example.com", "example.com"],
+        certificate_authority=sectigo_ca,
+        serial_number="0d1e2f",
+        fingerprint_sha256="b" * 64,
+        not_before=now - timedelta(days=30),
+        not_after=now + timedelta(days=335),
+        status=active,
+        replaces=old_www,
+        auto_renew=True,
+        order_number="ORD-002",
+        key_algorithm=KeyAlgorithmChoices.RSA,
+        key_size=4096,
+        validation_level=ValidationLevelChoices.OV,
+        extended_key_usage=[ExtendedKeyUsageChoices.SERVER_AUTH, ExtendedKeyUsageChoices.CLIENT_AUTH],
+        tenant=tenant_one,
+        description="Current www certificate",
+    )
+    Certificate.objects.create(
+        name="Wildcard edge",
+        common_name="*.edge.example.com",
+        subject_alternative_names=["*.edge.example.com", "edge.example.com"],
+        certificate_authority=edge_ca,
+        serial_number="1a2b3c",
+        fingerprint_sha256="c" * 64,
+        not_after=now + timedelta(days=20),
+        status=active,
+        key_algorithm=KeyAlgorithmChoices.ECDSA,
+        key_size=256,
+        validation_level=ValidationLevelChoices.DV,
+        extended_key_usage=[ExtendedKeyUsageChoices.SERVER_AUTH],
+        tenant=tenant_two,
+        description="Edge wildcard",
+    )
+    Certificate.objects.create(
+        name="vpn-client-01",
+        common_name="vpn-client-01.corp.example.com",
+        subject_alternative_names=["vpn-client-01.corp.example.com", "10.0.0.1"],
+        certificate_authority=internal_ca,
+        not_after=now + timedelta(days=700),
+        status=revoked,
+        auto_renew=False,
+        key_algorithm=KeyAlgorithmChoices.ED25519,
+        extended_key_usage=[ExtendedKeyUsageChoices.CLIENT_AUTH],
+        tenant=tenant_three,
+    )
+    Certificate.objects.create(
+        name="Planned API certificate",
+        common_name="api.example.com",
+        not_after=now + timedelta(days=90),
+        status=planned,
+    )

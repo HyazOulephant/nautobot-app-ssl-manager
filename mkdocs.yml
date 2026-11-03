@@ -113,6 +113,7 @@ nav:
       - Frequently Asked Questions: "user/faq.md"
       - External Interactions: "user/external_interactions.md"
       - Data Models:
+          - Certificate: "models/certificate.md"
           - Certificate Authority: "models/certificateauthority.md"
           - Certificate Provider: "models/certificateprovider.md"
   - Administrator Guide:

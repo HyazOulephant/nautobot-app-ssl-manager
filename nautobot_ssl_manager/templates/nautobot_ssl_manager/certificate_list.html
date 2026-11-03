@@ -1,0 +1,9 @@
+{% extends "generic/object_list.html" %}
+
+{% block buttons %}
+    {% if permissions.add %}
+        <a href="{% url "plugins:nautobot_ssl_manager:certificate_import_pem" %}" class="btn btn-secondary">
+            <span class="mdi mdi-file-certificate-outline" aria-hidden="true"></span> Import from PEM
+        </a>
+    {% endif %}
+{% endblock buttons %}

@@ -311,10 +311,6 @@ public
 .service_ports.json
 /nautobot_ssl_manager/static/nautobot_ssl_manager/docs
 
-# Claude Code local settings
-.claude/settings.local.json
-CLAUDE.local.md
-
 # OpenAI Codex CLI
 AGENTS.md
 AGENTS.override.md

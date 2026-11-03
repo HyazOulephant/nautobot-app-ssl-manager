@@ -88,3 +88,116 @@ class CertificateAuthorityFilterTestCase(  # pylint: disable=too-many-ancestors
         """Filter CAs on whether they have a provider."""
         self.assertEqual(self.filterset({"has_provider": True}, self.queryset).qs.count(), 3)
         self.assertEqual(self.filterset({"has_provider": False}, self.queryset).qs.count(), 1)
+
+    def test_parent(self):
+        """Filter CAs by issuer (name or ID)."""
+        root = models.CertificateAuthority.objects.get(name="Lab Root CA")
+        for value in (root.name, str(root.pk)):
+            self.assertEqual(
+                list(self.filterset({"parent": [value]}, self.queryset).qs.values_list("name", flat=True)),
+                ["Internal Issuing CA"],
+            )
+
+    def test_has_parent(self):
+        """Filter Intermediate CAs (with an issuer) and Root CAs (without)."""
+        self.assertQuerySetEqual(
+            self.filterset({"has_parent": True}, self.queryset).qs,
+            self.queryset.filter(parent__isnull=False),
+            ordered=False,
+        )
+        self.assertQuerySetEqual(
+            self.filterset({"has_parent": False}, self.queryset).qs,
+            self.queryset.filter(parent__isnull=True),
+            ordered=False,
+        )
+
+    def test_children(self):
+        """Filter CAs by the CAs they issued."""
+        params = {"children": ["Internal Issuing CA"]}
+        self.assertEqual(list(self.filterset(params, self.queryset).qs.values_list("name", flat=True)), ["Lab Root CA"])
+
+    def test_has_children(self):
+        """Filter CAs on whether they issued other CAs."""
+        self.assertEqual(
+            list(self.filterset({"has_children": True}, self.queryset).qs.values_list("name", flat=True)),
+            ["Lab Root CA"],
+        )
+        self.assertEqual(self.filterset({"has_children": False}, self.queryset).qs.count(), 3)
+
+
+class CertificateFilterTestCase(  # pylint: disable=too-many-ancestors
+    FilterTestCases.FilterTestCase, FilterTestCases.TenancyFilterTestCaseMixin
+):
+    """Certificate filter test case."""
+
+    queryset = models.Certificate.objects.all()
+    filterset = filters.CertificateFilterSet
+    tenancy_related_name = "certificates"
+    generic_filter_tests = (
+        ("certificate_authority", "certificate_authority__id"),
+        ("certificate_authority", "certificate_authority__name"),
+        ("common_name",),
+        ("description",),
+        ("fingerprint_sha256",),
+        ("key_size",),
+        ("name",),
+        ("order_number",),
+        ("serial_number",),
+        ("status", "status__id"),
+        ("status", "status__name"),
+    )
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data."""
+        fixtures.create_certificates()
+
+    def test_q_search(self):
+        self.assertEqual(self.filterset({"q": "edge.example"}, self.queryset).qs.count(), 1)
+        self.assertEqual(self.filterset({"q": "ORD-002"}, self.queryset).qs.count(), 1)
+
+    def test_san(self):
+        params = {"san": "WWW.example.com"}
+        self.assertEqual(
+            set(self.filterset(params, self.queryset).qs.values_list("name", flat=True)),
+            {"www.example.com 2025", "www.example.com 2026"},
+        )
+        self.assertEqual(self.filterset({"san": "10.0.0.1"}, self.queryset).qs.count(), 1)
+        self.assertEqual(self.filterset({"san": "not valid"}, self.queryset).qs.count(), 0)
+
+    def test_extended_key_usage(self):
+        params = {"extended_key_usage": ["clientAuth"]}
+        self.assertEqual(
+            set(self.filterset(params, self.queryset).qs.values_list("name", flat=True)),
+            {"www.example.com 2026", "vpn-client-01"},
+        )
+
+    def test_expired(self):
+        self.assertEqual(self.filterset({"expired": True}, self.queryset).qs.count(), 1)
+        self.assertEqual(self.filterset({"expired": False}, self.queryset).qs.count(), 4)
+
+    def test_expires_within_days(self):
+        self.assertEqual(
+            list(self.filterset({"expires_within_days": 30}, self.queryset).qs.values_list("name", flat=True)),
+            ["Wildcard edge"],
+        )
+
+    def test_auto_renew(self):
+        self.assertEqual(self.filterset({"auto_renew": True}, self.queryset).qs.count(), 1)
+        self.assertEqual(self.filterset({"auto_renew": False}, self.queryset).qs.count(), 2)
+
+    def test_key_algorithm_and_validation_level(self):
+        self.assertEqual(self.filterset({"key_algorithm": ["ecdsa"]}, self.queryset).qs.count(), 1)
+        self.assertEqual(self.filterset({"validation_level": ["dv"]}, self.queryset).qs.count(), 2)
+
+    def test_provider(self):
+        self.assertEqual(self.filterset({"provider": ["Sectigo"]}, self.queryset).qs.count(), 2)
+
+    def test_replaces_and_has_replaced_by(self):
+        self.assertEqual(
+            list(
+                self.filterset({"replaces": ["www.example.com 2025"]}, self.queryset).qs.values_list("name", flat=True)
+            ),
+            ["www.example.com 2026"],
+        )
+        self.assertEqual(self.filterset({"has_replaced_by": True}, self.queryset).qs.count(), 1)

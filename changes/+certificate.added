@@ -1,0 +1,1 @@
+Added the Certificate model, with SANs, validity, renewal chain (replaces), Extended Key Usage and an import from PEM.
