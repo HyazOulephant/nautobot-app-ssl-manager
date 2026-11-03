@@ -128,6 +128,8 @@ class CertificateAuthorityUIViewSet(NautobotUIViewSet):
                 table_filter="parent",
                 table_title="Issued Certificate Authorities",
                 exclude_columns=["parent"],
+                # Direct children only: no tree indentation needed, and avoids recursive queries on Nautobot < 3.2.
+                hide_hierarchy_ui=True,
             ),
             ObjectsTablePanel(
                 weight=300,
