@@ -4,10 +4,11 @@ This document describes all new features and changes in the release. The format 
 
 ## Release Overview
 
-- Major features or milestones
-- Changes to compatibility with Nautobot and/or other apps, libraries etc.
-
-<!-- towncrier release notes start -->
+- First stable release of Nautobot SSL Manager.
+- Inventory of SSL/TLS certificates (public part only), Certificate Authorities and Certificate Providers, under a dedicated SSL Manager menu, REST API and GraphQL.
+- Certification chains: Root and Intermediate CAs organized as a tree, with a certification chain panel on CA and Certificate detail views.
+- Import of certificates from PEM, with renewal tracking (replaces / replaced by) and expiration filters.
+- Compatible with Nautobot 3.1.0 and higher (3.x).
 
 ## [v1.0.0 (2026-11-04)](https://github.com/HyazOulephant/nautobot-app-ssl-manager/releases/tag/v1.0.0)
 
