@@ -21,8 +21,6 @@ Certificate Authorities are organized as a tree (Root and Intermediate CAs), so 
 
 Only **public** certificates are stored: private keys are rejected and must never be stored in Nautobot.
 
-> This app is in **beta** (`0.1.0b1`): models and API may still change before `1.0`.
-
 ## Documentation
 
 Full documentation for this App can be found on [Read the Docs](https://nautobot-app-ssl-manager.readthedocs.io/en/latest/):

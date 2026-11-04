@@ -26,9 +26,6 @@ The app is available as a Python package via PyPI and can be installed with `pip
 pip install nautobot-ssl-manager
 ```
 
-!!! note
-    While the app is in beta, `pip` only installs pre-releases when asked explicitly: use `pip install --pre nautobot-ssl-manager` or pin the version (for example `nautobot-ssl-manager==0.1.0b1`).
-
 To ensure Nautobot SSL Manager is automatically re-installed during future upgrades, create a file named `local_requirements.txt` (if not already existing) in the Nautobot root directory (alongside `requirements.txt`) and list the `nautobot-ssl-manager` package:
 
 ```shell
