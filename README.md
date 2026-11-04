@@ -1,15 +1,5 @@
 # Nautobot SSL Manager
 
-<!--
-Developer Note - Remove Me!
-
-The README will have certain links/images broken until the PR is merged into `develop`. Update the GitHub links with whichever branch you're using (main etc.) if different.
-
-The logo of the project is a placeholder (docs/images/icon-nautobot-ssl-manager.png) - please replace it with your app icon, making sure it's at least 200x200px and has a transparent background!
-
-To avoid extra work and temporary links, make sure that publishing docs (or merging a PR) is done at the same time as setting up the docs site on RTD, then test everything.
--->
-
 <p align="center">
   <img src="https://raw.githubusercontent.com/HyazOulephant/nautobot-app-ssl-manager/develop/docs/images/icon-nautobot-ssl-manager.png" class="logo" height="200px">
   <br>
@@ -23,31 +13,21 @@ To avoid extra work and temporary links, make sure that publishing docs (or merg
 
 ## Overview
 
-> Developer Note: Add a long (2-3 paragraphs) description of what the App does, what problems it solves, what functionality it adds to Nautobot, what external systems it works with etc.
+Nautobot SSL Manager turns Nautobot into the source of truth for your SSL/TLS certificates. It adds an inventory of certificates, of the Certificate Authorities (CAs) that issue them and of the providers through which they are obtained, all available from a dedicated **SSL Manager** menu, the REST API and GraphQL.
 
-### Screenshots
+Certificates are described with the data needed to follow them over their lifecycle: Common Name and Subject Alternative Names, serial number and SHA-256 fingerprint, validity dates, key algorithm and size, validation level, Extended Key Usage, issuing CA, and the certificate they replace when renewed. Expiration is computed from the validity dates, and certificates can be filtered on it (expired, or expiring within N days). A certificate can be created by pasting its PEM: the form is then pre-filled with the data read from the certificate, without guessing anything that the certificate does not contain.
 
-> Developer Note: Add any representative screenshots of the App in action. These images should also be added to the `docs/user/app_use_cases.md` section.
+Certificate Authorities are organized as a tree (Root and Intermediate CAs), so the full certification chain of a certificate is visible from its detail view.
 
-> Developer Note: Place the files in the `docs/images/` folder and link them using only full URLs from GitHub, for example: `![Overview](https://raw.githubusercontent.com/HyazOulephant/nautobot-app-ssl-manager/develop/docs/images/app-overview.png)`. This absolute static linking is required to ensure the README renders properly in GitHub, the docs site, and any other external sites like PyPI.
+Only **public** certificates are stored: private keys are rejected and must never be stored in Nautobot.
 
-More screenshots can be found in the [Using the App](https://nautobot-app-ssl-manager.readthedocs.io/en/latest/user/app_use_cases/) page in the documentation. Here's a quick overview of some of the app's added functionality:
-
-![](https://raw.githubusercontent.com/HyazOulephant/nautobot-app-ssl-manager/develop/docs/images/placeholder.png)
-
-## Try it out!
-
-> Developer Note: Only keep this section if appropriate. Update link to correct sandbox.
-
-This App is installed in the Nautobot Community Sandbox found over at [demo.nautobot.com](https://demo.nautobot.com/)!
-
-> For a full list of all the available always-on sandbox environments, head over to the main page on [networktocode.com](https://www.networktocode.com/nautobot/sandbox-environments/).
+> This app is in **beta** (`0.1.0b1`): models and API may still change before `1.0`.
 
 ## Documentation
 
 Full documentation for this App can be found on [Read the Docs](https://nautobot-app-ssl-manager.readthedocs.io/en/latest/):
 
-- [User Guide](https://nautobot-app-ssl-manager.readthedocs.io/en/latest/user/app_overview/) - Overview, Using the App, Getting Started.
+- [User Guide](https://nautobot-app-ssl-manager.readthedocs.io/en/latest/user/app_overview/) - Overview, Getting Started, Using the App, Data Models.
 - [Administrator Guide](https://nautobot-app-ssl-manager.readthedocs.io/en/latest/admin/install/) - How to Install, Configure, Upgrade, or Uninstall the App.
 - [Developer Guide](https://nautobot-app-ssl-manager.readthedocs.io/en/latest/dev/contributing/) - Extending the App, Code Reference, Contribution Guide.
 - [Release Notes / Changelog](https://nautobot-app-ssl-manager.readthedocs.io/en/latest/admin/release_notes/).
@@ -63,4 +43,4 @@ Any PRs with fixes or improvements are very welcome!
 
 ## Questions
 
-For any questions or comments, please check the [FAQ](https://nautobot-app-ssl-manager.readthedocs.io/en/latest/user/faq/) first. Feel free to also swing by the [Network to Code Slack](https://networktocode.slack.com/) (channel `#nautobot`), sign up [here](http://slack.networktocode.com/) if you don't have an account.
+For any questions or comments, please check the [FAQ](https://nautobot-app-ssl-manager.readthedocs.io/en/latest/user/faq/) first, then feel free to open an [issue on GitHub](https://github.com/HyazOulephant/nautobot-app-ssl-manager/issues).

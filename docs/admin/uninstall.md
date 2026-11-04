@@ -10,15 +10,16 @@ Prior to removing the app from the `nautobot_config.py`, run the following comma
 nautobot-server migrate nautobot_ssl_manager zero
 ```
 
-!!! warning "Developer Note - Remove Me!"
-    Any other cleanup operations to ensure the database is clean after the app is removed. Is there anything else that needs cleaning up, such as CFs, relationships, etc. if they're no longer desired?
+This deletes all the app data (certificates, Certificate Authorities and providers).
+
+The default statuses (`Active`, `Deprecated`, `Retired`, `Planned`, `Revoked`) are **kept**: rolling back the migrations only removes their association with the app models, as these statuses may be used by other models. Delete them manually from *Extensibility > Statuses* if they are no longer needed.
 
 ## Remove App configuration
 
-Remove the configuration you added in `nautobot_config.py` from `PLUGINS` & `PLUGINS_CONFIG`.
+Remove `"nautobot_ssl_manager"` from `PLUGINS` in `nautobot_config.py`.
 
 ## Uninstall the package
 
 ```bash
-$ pip3 uninstall nautobot-ssl-manager
+pip3 uninstall nautobot-ssl-manager
 ```

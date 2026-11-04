@@ -2,21 +2,18 @@
 
 Here you will find detailed instructions on how to **install** and **configure** the App within your Nautobot environment.
 
-!!! warning "Developer Note - Remove Me!"
-    Detailed instructions on installing the App. You will need to update this section based on any additional dependencies or prerequisites.
-
 ## Prerequisites
 
-- The app is compatible with Nautobot 3.1.0 and higher.
-- Databases supported: PostgreSQL, MySQL
+- The app is compatible with Nautobot 3.1.0 and higher (Nautobot 3.x).
+- Databases supported: PostgreSQL, MySQL.
+- Python dependency installed with the app: [`cryptography`](https://cryptography.io/) (>= 46.0.7), used to parse PEM certificates.
 
 !!! note
-    Please check the [dedicated page](compatibility_matrix.md) for a full compatibility matrix and the deprecation policy.
+    Please check the [dedicated page](compatibility_matrix.md) for a full compatibility matrix.
 
 ### Access Requirements
 
-!!! warning "Developer Note - Remove Me!"
-    What external systems (if any) it needs access to in order to work.
+The app does not need access to any external system.
 
 ## Install Guide
 
@@ -29,26 +26,20 @@ The app is available as a Python package via PyPI and can be installed with `pip
 pip install nautobot-ssl-manager
 ```
 
+!!! note
+    While the app is in beta, `pip` only installs pre-releases when asked explicitly: use `pip install --pre nautobot-ssl-manager` or pin the version (for example `nautobot-ssl-manager==0.1.0b1`).
+
 To ensure Nautobot SSL Manager is automatically re-installed during future upgrades, create a file named `local_requirements.txt` (if not already existing) in the Nautobot root directory (alongside `requirements.txt`) and list the `nautobot-ssl-manager` package:
 
 ```shell
 echo nautobot-ssl-manager >> local_requirements.txt
 ```
 
-Once installed, the app needs to be enabled in your Nautobot configuration. The following block of code below shows the additional configuration required to be added to your `nautobot_config.py` file:
-
-- Append `"nautobot_ssl_manager"` to the `PLUGINS` list.
-- Append the `"nautobot_ssl_manager"` dictionary to the `PLUGINS_CONFIG` dictionary and override any defaults.
+Once installed, the app needs to be enabled in your Nautobot configuration by appending `"nautobot_ssl_manager"` to the `PLUGINS` list in your `nautobot_config.py` file:
 
 ```python
 # In your nautobot_config.py
 PLUGINS = ["nautobot_ssl_manager"]
-
-# PLUGINS_CONFIG = {
-#   "nautobot_ssl_manager": {
-#     ADD YOUR SETTINGS HERE
-#   }
-# }
 ```
 
 Once the Nautobot configuration is updated, run the Post Upgrade command (`nautobot-server post_upgrade`) to run migrations and clear any cache:
@@ -69,13 +60,8 @@ sudo systemctl restart nautobot nautobot-worker nautobot-scheduler
 
 ## App Configuration
 
-!!! warning "Developer Note - Remove Me!"
-    Any configuration required to get the App set up. Edit the table below as per the examples provided.
+The app does not have any setting: no `PLUGINS_CONFIG` entry is required.
 
-The app behavior can be controlled with the following list of settings:
+## Permissions
 
-| Key     | Example | Default | Description                          |
-| ------- | ------ | -------- | ------------------------------------- |
-| `enable_backup` | `True` | `True` | A boolean to represent whether or not to run backup configurations within the app. |
-| `platform_slug_map` | `{"cisco_wlc": "cisco_aireos"}` | `None` | A dictionary in which the key is the platform slug and the value is what netutils uses in any "network_os" parameter. |
-| `per_feature_bar_width` | `0.15` | `0.15` | The width of the table bar within the overview report |
+The app uses the standard Nautobot object permissions on its models (`nautobot_ssl_manager.<action>_certificate`, `..._certificateauthority`, `..._certificateprovider`, with `view`, `add`, `change` and `delete` actions). The *Import from PEM* view requires the `add_certificate` permission.

@@ -4,9 +4,32 @@ This document describes common use-cases and scenarios for this App.
 
 ## General Usage
 
+All the app views are available from the **SSL Manager** menu tab. Each model has the standard Nautobot list, detail, edit, bulk edit/delete and CSV import/export views, and is also available through the [REST API](external_interactions.md#nautobot-rest-api-endpoints) and GraphQL.
+
 ## Use-cases and common workflows
 
-## Screenshots
+### Follow certificate expirations
 
-!!! warning "Developer Note - Remove Me!"
-    Ideally captures every view exposed by the App. Should include a relevant dataset.
+The certificate list can be filtered on:
+
+- `expired`: certificates whose `not_after` date is in the past;
+- `expires_within_days`: certificates not yet expired that expire within the given number of days.
+
+The `days_remaining` and `is_expired` values are computed from `not_after` and exposed in the REST API, which makes them usable by external monitoring or reporting tools.
+
+### Register a certificate from its PEM
+
+*SSL Manager > Certificates > Import from PEM* reads a pasted certificate and opens the creation form pre-filled with the data it contains. Certificates that may be replaced by the new one (same CN or shared SANs, not yet replaced) are suggested next to the *replaces* field. See [Import from PEM](../models/certificate.md#import-from-pem) for the details and the refusal cases.
+
+### Track renewals
+
+A renewed certificate references the certificate it replaces (`replaces`); the previous certificate shows it as *Replaced by*. The `has_replaced_by` filter lists certificates that have (or have not) been replaced, for example to find active certificates that are still waiting for a renewal.
+
+### Find the certificates covering a name
+
+- `san`: certificates whose SAN list contains exactly the given entry (for example `www.example.com`);
+- `q` (search): partial match on name, Common Name, serial number, fingerprint, order number, description and comments.
+
+### Explore certification chains
+
+The detail views of a Certificate Authority and of a Certificate show the certification chain from the Root CA. The CA detail view also lists the CAs and the certificates it issued. Certificates can be filtered by CA (`certificate_authority`) or by provider (`provider`, through the CA).

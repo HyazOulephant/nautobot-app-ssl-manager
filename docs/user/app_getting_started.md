@@ -8,12 +8,21 @@ To install the App, please follow the instructions detailed in the [Installation
 
 ## First steps with the App
 
-!!! warning "Developer Note - Remove Me!"
-    What (with screenshots preferably) does it look like to perform the simplest workflow within the App once installed?
+Once installed, the app adds an **SSL Manager** tab to the navigation menu. The recommended order to populate the inventory follows the dependencies between the models:
+
+1. **Create the providers** (*SSL Manager > Providers*): the vendors or services through which you obtain certificates. This step is optional, a CA can exist without provider.
+2. **Create the Certificate Authorities** (*SSL Manager > Certificate Authorities*), starting with the Root CAs, then the Intermediate CAs with their *Issued by* field set to the issuing CA. Set the type (`public` or `private`) and, if relevant, the provider.
+3. **Add the certificates** (*SSL Manager > Certificates*):
+    - either with **Import from PEM**: paste the public certificate, check the pre-filled form, then complete the fields that cannot be read from the certificate (status, auto-renew, order number, tenant, replaced certificate);
+    - or with the standard **Add** form, or a CSV import.
+
+!!! tip
+    The import from PEM links the certificate to its CA only if a Certificate Authority named exactly like the issuer Common Name of the certificate exists. Naming your CAs after their Common Name lets the import fill this field for you.
 
 ## What are the next steps?
 
-!!! warning "Developer Note - Remove Me!"
-    After taking the first steps, what else could the users look at doing.
+- Use the `expires_within_days` and `expired` filters to follow upcoming expirations, from the UI or the REST API.
+- When a certificate is renewed, create the new certificate with *replaces* set to the previous one, then change the status of the previous one: the renewal history stays visible on both certificates.
+- Assign tenants, tags, contacts or teams to organize ownership.
 
 You can check out the [Use Cases](app_use_cases.md) section for more examples.
