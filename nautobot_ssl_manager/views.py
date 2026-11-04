@@ -7,7 +7,7 @@ from django.db.models import Q
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.html import format_html_join
+from django.utils.html import format_html, format_html_join
 from nautobot.apps.ui import (
     BaseTextPanel,
     ObjectDetailContent,
@@ -152,7 +152,10 @@ def render_list(value):
     """Render a list of strings, one per line."""
     if not value:
         return helpers.placeholder(None)
-    return format_html_join("<br>", "<code>{}</code>", ((entry,) for entry in value))
+    # Inline rendering: Nautobot wraps the value in a <span> followed by an inline copy button,
+    # so block elements would push that button onto an extra line.
+    first, *others = value
+    return format_html("<code>{}</code>", first) + format_html_join("", "<br><code>{}</code>", ((e,) for e in others))
 
 
 def render_eku(value):

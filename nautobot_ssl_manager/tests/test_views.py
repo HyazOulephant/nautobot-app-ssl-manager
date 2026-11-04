@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from django.urls import reverse
 from nautobot.apps.testing import TestCase, ViewTestCases
 
-from nautobot_ssl_manager import models
+from nautobot_ssl_manager import models, views
 from nautobot_ssl_manager.choices import CertificateAuthorityTypeChoices
 from nautobot_ssl_manager.tests import certificates, fixtures
 
@@ -219,3 +219,17 @@ class CertificationChainViewTest(TestCase):
         self.assertIn("issued certificate authorities", content.lower())
         self.assertIn("issued certificates", content.lower())
         self.assertIn("Internal Issuing CA", content)
+
+
+class RenderListTest(TestCase):
+    """Test the rendering of list values (SANs, Extended Key Usage) on detail views."""
+
+    def test_one_entry_per_line_without_escaped_markup(self):
+        """Each entry is rendered on its own line, without the separator being escaped."""
+        rendered = views.render_list(["www.example.com", "example.com"])
+        self.assertEqual(rendered, "<code>www.example.com</code><br><code>example.com</code>")
+        self.assertNotIn("&lt;", rendered)
+
+    def test_entries_are_escaped(self):
+        """Entries are HTML-escaped."""
+        self.assertIn("&lt;script&gt;", views.render_list(["<script>"]))

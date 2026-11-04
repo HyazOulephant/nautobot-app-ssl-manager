@@ -7,26 +7,48 @@ This document provides an overview of the App including critical information and
 
 ## Description
 
-![Main Page](../media/ss_main_page_light.png#only-light)
-![Main Page](../media/ss_main_page_dark.png#only-dark)
+Nautobot SSL Manager adds an inventory of SSL/TLS certificates to Nautobot. It provides three data models:
+
+- [Certificate Provider](../models/certificateprovider.md): the vendor or service through which certificates are obtained (a commercial vendor, Let's Encrypt, an internal PKI team...).
+- [Certificate Authority](../models/certificateauthority.md): the CA issuing certificates, organized as a tree of Root and Intermediate CAs.
+- [Certificate](../models/certificate.md): an SSL/TLS certificate (public part only), with its identity (CN, SANs, serial number, fingerprint), its validity, its technical characteristics, its issuing CA and its renewal history.
+
+The app adds an **SSL Manager** tab to the navigation menu:
+
+![SSL Manager menu](../images/menu.png)
+
+Detail view of a certificate, with its validity, its technical details and its certification chain:
+
+![Certificate detail view](../images/certificate.png)
+
+The app follows a "nothing is guessed" principle: data is either entered by the user or read from the certificate itself, never inferred (for example, `auto_renew` stays unknown until set, and the import from PEM never selects the certificate to replace on its own).
+
+!!! warning
+    Only public certificates are stored. A PEM containing a private key is rejected, both from the UI and from the REST API.
 
 ## Audience (User Personas) - Who should use this App?
 
-!!! warning "Developer Note - Remove Me!"
-    Who is this meant for/ who is the common user of this app?
+- Teams operating services exposed over TLS, who need to know which certificates exist, where they come from and when they expire.
+- Teams managing an internal PKI or the relationship with certificate vendors, who need an inventory of CAs and providers.
+- Automation and monitoring tooling, which can consume the inventory (including expiration data) through the REST API and GraphQL.
 
 ## Authors and Maintainers
 
-!!! warning "Developer Note - Remove Me!"
-    Add the team and/or the main individuals maintaining this project. Include historical maintainers as well.
+- [HyazOulephant](https://github.com/HyazOulephant)
 
 ## Nautobot Features Used
 
-!!! warning "Developer Note - Remove Me!"
-    What is shown today in the Installed Apps page in Nautobot. What parts of Nautobot does it interact with, what does it add etc. ?
+- **Navigation**: a dedicated **SSL Manager** menu tab with *Certificates* (including an *Import from PEM* button), *Certificate Authorities* and *Providers*.
+- **Data models** with the standard Nautobot features: list, detail, create/edit, bulk edit, bulk delete, CSV import/export, change logging, tags, notes, contacts/teams, custom fields, relationships, global search.
+- **Tenancy**: each model can be assigned to a Tenant.
+- **Tree model**: Certificate Authorities use Nautobot's tree support (`parent`), with a tree list view.
+- **REST API** and **GraphQL** for all models.
+- **Custom links, custom validators, export templates and webhooks** can be defined on all models.
 
 ### Extras
 
-!!! warning "Developer Note - Remove Me!"
-    Custom Fields - things like which CFs are created by this app?
-    Jobs - are jobs, if so, which ones, installed by this app?
+- **Statuses**: the migrations associate default statuses with the app models. Existing statuses with the same name are reused; missing ones are created.
+    - Certificate Authority: `Active`, `Deprecated`, `Retired`.
+    - Certificate: `Planned`, `Active`, `Revoked`, `Retired`.
+- **Custom Fields**: none created by the app.
+- **Jobs**: none provided by the app.

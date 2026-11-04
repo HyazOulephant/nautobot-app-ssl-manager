@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nautobot-ssl-manager"
-version = "0.1.0b1"
+version = "1.0.0"
 description = "Nautobot application for SSL/TLS certificate inventory, PKI management and DCV validation"
 authors = ["HyazOulephant <36076236+HyazOulephant@users.noreply.github.com>"]
 license = "Apache-2.0"
@@ -11,7 +11,7 @@ documentation = "https://nautobot-app-ssl-manager.readthedocs.io/en/latest/"
 keywords = ["nautobot", "nautobot-app", "nautobot-plugin"]
 classifiers = [
     "Intended Audience :: Developers",
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -164,7 +164,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.towncrier]
 package = "nautobot_ssl_manager"
 directory = "changes"
-filename = "docs/admin/release_notes/version_X.Y.md"
+filename = "docs/admin/release_notes/version_1.0.md"
 template = "development/towncrier_template.j2"
 start_string = "<!-- towncrier release notes start -->"
 issue_format = "[#{issue}](https://github.com/HyazOulephant/nautobot-app-ssl-manager/issues/{issue})"

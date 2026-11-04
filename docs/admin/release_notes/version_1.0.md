@@ -1,48 +1,27 @@
 # v1.0 Release Notes
 
-!!! warning "Developer Note - Remove Me!"
-    Guiding Principles:
-
-    - Changelogs are for humans, not machines.
-    - There should be an entry for every single version.
-    - The same types of changes should be grouped.
-    - Versions and sections should be linkable.
-    - The latest version comes first.
-    - The release date of each version is displayed.
-    - Mention whether you follow Semantic Versioning.
-
-    Types of changes:
-
-    - `Added` for new features.
-    - `Changed` for changes in existing functionality.
-    - `Deprecated` for soon-to-be removed features.
-    - `Removed` for now removed features.
-    - `Fixed` for any bug fixes.
-    - `Security` in case of vulnerabilities.
-
-
-This document describes all new features and changes in the release `1.0`. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+This document describes all new features and changes in the release. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Release Overview
 
-- Major features or milestones
-- Achieved in this `x.y` release
-- Changes to compatibility with Nautobot and/or other apps, libraries etc.
+- First stable release of Nautobot SSL Manager.
+- Inventory of SSL/TLS certificates (public part only), Certificate Authorities and Certificate Providers, under a dedicated SSL Manager menu, REST API and GraphQL.
+- Certification chains: Root and Intermediate CAs organized as a tree, with a certification chain panel on CA and Certificate detail views.
+- Import of certificates from PEM, with renewal tracking (replaces / replaced by) and expiration filters.
+- Compatible with Nautobot 3.1.0 and higher (3.x).
 
-## [v1.0.1] - 2021-09-08
-
-### Added
-
-### Changed
-
-### Fixed
-
-- [#123](https://github.com/HyazOulephant/nautobot-app-ssl-manager/issues/123) Fixed Tag filtering not working in job launch form
-
-## [v1.0.0] - 2021-08-03
+## [v1.0.0 (2026-11-04)](https://github.com/HyazOulephant/nautobot-app-ssl-manager/releases/tag/v1.0.0)
 
 ### Added
 
-### Changed
+- Added certification chains: Certificate Authorities can be issued by another CA (Root / Intermediate deduced from the tree), with a tree list view and a certification chain panel on CA and Certificate detail views.
+- Added the Certificate model, with SANs, validity, renewal chain (replaces), Extended Key Usage and an import from PEM.
+- Certificate models added: CertificateProvider and CertificateAuthority, under the new SSL Manager navigation menu.
 
 ### Fixed
+
+- Fixed the rendering of Subject Alternative Names and Extended Key Usage on the certificate detail view (the line separator was displayed as text).
+
+### Documentation
+
+- Replaced the documentation template placeholders with the app documentation (overview, getting started, use cases, REST API, FAQ, install/upgrade/uninstall, architecture decisions).
