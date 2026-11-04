@@ -1,1 +1,0 @@
-Fixed the rendering of Subject Alternative Names and Extended Key Usage on the certificate detail view (the line separator was displayed as text).
