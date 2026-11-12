@@ -118,6 +118,9 @@ class ParsedCertificate:  # pylint: disable=too-many-instance-attributes
     common_name: str = ""
     subject_alternative_names: list = field(default_factory=list)
     issuer_common_name: str = ""
+    subject_dn: str = ""
+    issuer_dn: str = ""
+    is_ca: bool = False
     serial_number: str = ""
     fingerprint_sha256: str = ""
     not_before: datetime = None
@@ -241,6 +244,9 @@ def parse_pem_certificate(pem_text):
     parsed = ParsedCertificate(pem=certificate.public_bytes(serialization.Encoding.PEM).decode())
     parsed.common_name = _first_attribute(certificate.subject, NameOID.COMMON_NAME)
     parsed.issuer_common_name = _first_attribute(certificate.issuer, NameOID.COMMON_NAME)
+    parsed.subject_dn = certificate.subject.rfc4514_string()
+    parsed.issuer_dn = certificate.issuer.rfc4514_string()
+    parsed.is_ca = _is_ca(certificate)
     parsed.serial_number = format(certificate.serial_number, "x")
     parsed.fingerprint_sha256 = certificate.fingerprint(hashes.SHA256()).hex()
     parsed.not_before = certificate.not_valid_before_utc

@@ -198,3 +198,18 @@ def create_certificates():
         not_after=now + timedelta(days=90),
         status=planned,
     )
+
+
+def create_ca_certificate():
+    """Create the certificate of the Lab Root CA and link it to that CA (needs `create_certificate_authorities()`)."""
+    lab_root = CertificateAuthority.objects.get(name="Lab Root CA")
+    certificate = Certificate.objects.create(
+        name="Lab Root CA certificate",
+        common_name="Lab Root CA",
+        certificate_authority=lab_root,
+        not_after=timezone.now() + timedelta(days=3650),
+        status=get_certificate_statuses()[1],
+    )
+    lab_root.certificate = certificate
+    lab_root.validated_save()
+    return certificate

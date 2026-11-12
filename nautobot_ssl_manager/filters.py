@@ -81,6 +81,15 @@ class CertificateAuthorityFilterSet(  # pylint: disable=too-many-ancestors
         field_name="children",
         label="Has issued CAs",
     )
+    certificate = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=models.Certificate.objects.all(),
+        to_field_name="name",
+        label="CA certificate (name or ID)",
+    )
+    has_certificate = RelatedMembershipBooleanFilter(
+        field_name="certificate",
+        label="Has CA certificate",
+    )
 
     class Meta:
         """Meta attributes for filter."""
@@ -124,6 +133,10 @@ class CertificateFilterSet(  # pylint: disable=too-many-ancestors
     has_replaced_by = RelatedMembershipBooleanFilter(
         field_name="replaced_by",
         label="Has been replaced",
+    )
+    is_ca_certificate = RelatedMembershipBooleanFilter(
+        field_name="ca_certificate_of",
+        label="Is the certificate of a Certificate Authority",
     )
     san = django_filters.CharFilter(method="filter_san", label="SAN (exact entry)")
     extended_key_usage = django_filters.MultipleChoiceFilter(
