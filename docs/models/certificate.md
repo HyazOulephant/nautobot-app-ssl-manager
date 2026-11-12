@@ -25,6 +25,8 @@ A Certificate describes an SSL/TLS certificate. Only the **public** certificate 
 
 Computed (read-only): `days_remaining`, `is_expired`, `is_wildcard`.
 
+A certificate can be the certificate of a Certificate Authority (see [CA certificate](certificateauthority.md#ca-certificate)); its detail view then shows *CA certificate of*. The `is_ca_certificate` filter lists (or excludes) these certificates.
+
 Tags, notes, contacts/teams, custom fields, relationships and change logging are supported through the standard Nautobot features.
 
 ## Import from PEM
