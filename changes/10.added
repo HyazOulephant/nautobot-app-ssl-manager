@@ -1,0 +1,1 @@
+Added import of a PEM bundle (full chain) with a review page: the chain is established by signature verification, existing certificates and CAs are recognized, and the missing CAs and certificates are created after confirmation in a single transaction. A single certificate import now proposes to create its issuing CA when it is not in Nautobot.
