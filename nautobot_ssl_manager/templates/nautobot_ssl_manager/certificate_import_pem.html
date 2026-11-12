@@ -17,12 +17,16 @@
                     </div>
                 {% endif %}
                 <div class="card">
-                    <div class="card-header"><strong>Certificate</strong></div>
+                    <div class="card-header"><strong>Certificate or PEM bundle</strong></div>
                     <div class="card-body">
                         <p class="text-secondary">
                             Paste the public certificate. Its data (Common Name, SANs, serial number, fingerprint,
                             validity, key, Extended Key Usage and validation level) is read from the certificate and
                             pre-filled on the next page, where you complete and review it before saving.
+                        </p>
+                        <p class="text-secondary">
+                            You can also paste a full chain (PEM bundle): each certificate is analyzed and a review page
+                            proposes to create the missing Certificate Authorities and certificates.
                         </p>
                         {% render_form form %}
                     </div>

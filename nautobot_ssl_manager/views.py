@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from django.contrib import messages
 from django.db.models import Q
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
@@ -27,12 +27,17 @@ from nautobot.core.views.utils import get_obj_from_context
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from nautobot_ssl_manager import choices, downloads, filters, forms, models, tables
+from nautobot_ssl_manager import bundles, choices, downloads, filters, forms, models, tables, utils
 from nautobot_ssl_manager.api import serializers
 
 
 class CertificationChainPanel(Panel):
-    """Certification chain from the Root CA down to the displayed object (Certificate or Certificate Authority)."""
+    """Certification chain from the Root CA down to the displayed object (Certificate or Certificate Authority).
+
+    Each CA of the chain is displayed with its own CA certificate (or a warning when none is linked), so that the
+    chain of certificates is visible, not only the CA tree. A certificate that is the CA certificate of a CA is
+    displayed under that CA (it is not an extra level of the chain).
+    """
 
     body_content_template_path = "nautobot_ssl_manager/inc/certification_chain.html"
     label = "Certification chain"
@@ -305,6 +310,27 @@ def get_replaces_suggestions(common_name, subject_alternative_names, exclude_fin
     return list(queryset.order_by("-not_after")[:REPLACES_SUGGESTIONS_LIMIT])
 
 
+def get_missing_issuer_hint(parsed):
+    """Hint displayed when the issuer of an imported certificate is not in Nautobot (link to create its CA).
+
+    The issuer is considered present when a stored CA certificate is proven to have issued the certificate, or when a
+    CA is named exactly like the issuer Common Name. The issuer Common Name is the only data available about it.
+    """
+    if parsed.is_self_signed or not parsed.issuer_common_name:
+        return None
+    if models.CertificateAuthority.objects.filter(name=parsed.issuer_common_name).exists():
+        return None
+    if bundles.find_issuing_authorities(parsed.certificate):
+        return None
+    url = f"{reverse('plugins:nautobot_ssl_manager:certificateauthority_add')}?{urlencode({'name': parsed.issuer_common_name})}"
+    return format_html(
+        'The issuer of this certificate ({}) is not in Nautobot: <a href="{}">create its Certificate Authority</a> '
+        "first, or import the full chain (PEM bundle) to create it from its certificate.",
+        parsed.issuer_common_name,
+        url,
+    )
+
+
 def get_ca_certificate_hint(parsed):
     """Hint displayed when importing a CA certificate. The CA is only suggested, never linked automatically."""
     hint = "This is a CA certificate: once saved, link it to its Certificate Authority (CA certificate field)."
@@ -463,12 +489,18 @@ class CertificateUIViewSet(NautobotUIViewSet):
     def import_pem(self, request, *args, **kwargs):
         """Paste a PEM certificate, then continue on the pre-filled creation form."""
         form = forms.CertificateImportPEMForm(request.POST if request.method == "POST" else None)
+        if request.method == "POST" and form.is_valid() and form.bundle:
+            plan = bundles.BundlePlan(form.bundle, user=request.user)
+            review_form = forms.CertificateImportBundleForm(initial={"pem": form.cleaned_data["pem"]}, plan=plan)
+            return self._render_bundle_review(request, review_form)
         if request.method == "POST" and form.is_valid():
             parsed = form.parsed
             for warning in parsed.warnings:
                 messages.warning(request, warning)
             if parsed.is_ca:
                 messages.info(request, get_ca_certificate_hint(parsed))
+            if hint := get_missing_issuer_hint(parsed):
+                messages.info(request, hint)
             pending = request.session.get(PEM_IMPORT_SESSION_KEY, {})
             # Keep only the most recent imports to bound the session size.
             pending = dict(list(pending.items())[-(PEM_IMPORT_SESSION_MAX_ENTRIES - 1) :])
@@ -477,3 +509,49 @@ class CertificateUIViewSet(NautobotUIViewSet):
             request.session[PEM_IMPORT_SESSION_KEY] = pending
             return redirect(f"{reverse('plugins:nautobot_ssl_manager:certificate_add')}?pem_import={token}")
         return Response({"form": form})
+
+    @staticmethod
+    def _render_bundle_review(request, form):
+        """Render the review page of a PEM bundle."""
+        return render(
+            request,
+            "nautobot_ssl_manager/certificate_import_bundle.html",
+            {
+                "form": form,
+                "plan": form.plan,
+                "entries": [
+                    (entry, form.selected_field(entry), form.entry_fields(entry)) for entry in form.plan.entries
+                ],
+                "return_url": reverse("plugins:nautobot_ssl_manager:certificate_list"),
+            },
+        )
+
+    @action(
+        detail=False,
+        methods=["POST"],
+        url_path="import-bundle",
+        url_name="import_bundle",
+        custom_view_base_action="add",
+    )
+    def import_bundle(self, request, *args, **kwargs):
+        """Confirm the review of a PEM bundle: create the selected CAs and certificates in a single transaction."""
+        try:
+            plan = bundles.BundlePlan.from_pem(request.POST.get("pem", ""), user=request.user)
+        except utils.CertificateParseError as exc:
+            messages.error(request, f"Invalid PEM bundle: {exc}")
+            return redirect(reverse("plugins:nautobot_ssl_manager:certificate_import_pem"))
+        form = forms.CertificateImportBundleForm(request.POST, plan=plan)
+        if form.is_valid():
+            try:
+                changed = bundles.apply_plan(plan, form.selections, user=request.user)
+            except bundles.BundleImportError as exc:
+                form.add_error(None, f"Nothing was saved. {exc}")
+            else:
+                links = format_html_join(
+                    ", ", '<a href="{}">{}</a>', ((obj.get_absolute_url(), obj) for obj in changed)
+                )
+                messages.success(request, format_html("Bundle imported. Created or updated: {}", links))
+                certificates = [obj for obj in changed if isinstance(obj, models.Certificate)]
+                target = certificates[-1] if certificates else changed[-1]
+                return redirect(target.get_absolute_url())
+        return self._render_bundle_review(request, form)

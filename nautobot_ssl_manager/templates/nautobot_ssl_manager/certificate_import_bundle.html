@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load form_helpers %}
+
+{% block title %}Review the PEM bundle{% endblock %}
+
+{% block content %}
+    <form action="{% url "plugins:nautobot_ssl_manager:certificate_import_bundle" %}" method="post" class="h-100 vstack">
+        {% csrf_token %}
+        {{ form.pem }}
+        <div class="row justify-content-center align-content-start flex-fill">
+            <div class="col-lg-10 col-md-12">
+                {% if form.non_field_errors %}
+                    <div class="card border-danger mb-16">
+                        <div class="card-header bg-danger-subtle border-danger text-body">
+                            <strong>Errors</strong>
+                        </div>
+                        <div class="card-body">{{ form.non_field_errors }}</div>
+                    </div>
+                {% endif %}
+                <p class="text-secondary">
+                    The chain below is established by signature verification, issuers first. Nothing is saved until you
+                    confirm: uncheck the actions you do not want. Values that cannot be read from the certificates
+                    (CA type, statuses, provider, tenant) must be set by you.
+                </p>
+                {% for entry, selected, fields in entries %}
+                    <div class="card mb-16">
+                        <div class="card-header">
+                            <span class="mdi {% if entry.role == "Root CA" %}mdi-shield-lock-outline{% elif entry.role == "Intermediate CA" %}mdi-shield-check-outline{% else %}mdi-file-certificate-outline{% endif %}" aria-hidden="true"></span>
+                            <strong>{{ entry.parsed.common_name|default:entry.parsed.subject_dn }}</strong>
+                            <span class="badge bg-secondary">{{ entry.role }}</span>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm mb-8">
+                                <tbody>
+                                    <tr><th scope="row" class="w-25">Subject</th><td><code>{{ entry.parsed.subject_dn }}</code></td></tr>
+                                    <tr><th scope="row">Issued by</th><td>{{ entry.issuer_label }}</td></tr>
+                                    <tr><th scope="row">Expires</th><td>{{ entry.parsed.not_after }}</td></tr>
+                                    <tr><th scope="row">SHA-256 fingerprint</th><td><code>{{ entry.parsed.fingerprint_sha256 }}</code></td></tr>
+                                    <tr><th scope="row">In Nautobot</th><td>{{ entry.finding }}</td></tr>
+                                    {% for note in entry.notes %}
+                                        <tr><th scope="row">Note</th><td class="text-warning">{{ note }}</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% if entry.action == "none" %}
+                                <span class="text-secondary">No action.</span>
+                            {% else %}
+                                {% render_field selected %}
+                                {% if entry.disabled_reason %}
+                                    <p class="text-danger">{{ entry.disabled_reason }}</p>
+                                {% endif %}
+                                {% for bound_field in fields %}
+                                    {% render_field bound_field %}
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="nb-form-sticky-footer">
+            <button type="submit" class="btn btn-primary">
+                <span class="mdi mdi-check-bold" aria-hidden="true"></span> Import
+            </button>
+            <a href="{{ return_url }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+{% endblock content %}
