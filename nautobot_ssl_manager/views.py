@@ -109,12 +109,19 @@ class CertificateAuthorityUIViewSet(NautobotUIViewSet):
                     "status",
                     "parent",
                     "chain_role",
+                    "certificate",
+                    "certificate__not_after",
+                    "certificate__days_remaining",
                     "provider",
                     "tenant",
                     "description",
                     "portal_url",
                 ],
-                key_transforms={"chain_role": "Role"},
+                key_transforms={
+                    "chain_role": "Role",
+                    "certificate__not_after": "CA certificate expires",
+                    "certificate__days_remaining": "Days remaining",
+                },
                 value_transforms={"portal_url": [helpers.hyperlinked_field]},
             ),
             CertificationChainPanel(
@@ -210,6 +217,18 @@ def get_replaces_suggestions(common_name, subject_alternative_names, exclude_fin
     return list(queryset.order_by("-not_after")[:REPLACES_SUGGESTIONS_LIMIT])
 
 
+def get_ca_certificate_hint(parsed):
+    """Hint displayed when importing a CA certificate. The CA is only suggested, never linked automatically."""
+    hint = "This is a CA certificate: once saved, link it to its Certificate Authority (CA certificate field)."
+    if parsed.common_name:
+        authorities = list(
+            models.CertificateAuthority.objects.filter(name__iexact=parsed.common_name, certificate__isnull=True)[:2]
+        )
+        if len(authorities) == 1:
+            hint += f" Suggested Certificate Authority (same name as the Common Name): {authorities[0]}."
+    return hint
+
+
 class CertificateUIViewSet(NautobotUIViewSet):
     """ViewSet for Certificate views."""
 
@@ -234,10 +253,14 @@ class CertificateUIViewSet(NautobotUIViewSet):
                     "status",
                     "certificate_authority",
                     "certificate_authority__provider",
+                    "ca_certificate_authority",
                     "tenant",
                     "description",
                 ],
-                key_transforms={"certificate_authority__provider": "Provider"},
+                key_transforms={
+                    "certificate_authority__provider": "Provider",
+                    "ca_certificate_authority": "CA certificate of",
+                },
             ),
             ObjectFieldsPanel(
                 weight=200,
@@ -331,6 +354,8 @@ class CertificateUIViewSet(NautobotUIViewSet):
             parsed = form.parsed
             for warning in parsed.warnings:
                 messages.warning(request, warning)
+            if parsed.is_ca:
+                messages.info(request, get_ca_certificate_hint(parsed))
             pending = request.session.get(PEM_IMPORT_SESSION_KEY, {})
             # Keep only the most recent imports to bound the session size.
             pending = dict(list(pending.items())[-(PEM_IMPORT_SESSION_MAX_ENTRIES - 1) :])

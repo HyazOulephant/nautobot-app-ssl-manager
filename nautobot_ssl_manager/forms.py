@@ -82,6 +82,16 @@ class CertificateProviderFilterForm(NautobotFilterForm, TenancyFilterForm):  # p
 # Certificate Authorities
 #
 
+CA_CERTIFICATE_SUGGESTIONS_LIMIT = 5
+
+
+def get_ca_certificate_suggestions(name):
+    """Certificates not yet linked to a CA whose Common Name is the given CA name. Never selected automatically."""
+    if not name:
+        return []
+    queryset = models.Certificate.objects.filter(common_name__iexact=name, ca_certificate_of__isnull=True)
+    return list(queryset.order_by("-not_after")[:CA_CERTIFICATE_SUGGESTIONS_LIMIT])
+
 
 class CertificateAuthorityForm(NautobotModelForm, TenancyForm):  # pylint: disable=too-many-ancestors
     """CertificateAuthority creation/edit form."""
@@ -93,11 +103,19 @@ class CertificateAuthorityForm(NautobotModelForm, TenancyForm):  # pylint: disab
         help_text="CA that issued this CA's certificate. Leave empty for a Root CA.",
     )
     provider = DynamicModelChoiceField(queryset=models.CertificateProvider.objects.all(), required=False)
+    certificate = DynamicModelChoiceField(
+        queryset=models.Certificate.objects.all(),
+        required=False,
+        query_params={"is_ca_certificate": "False"},
+        label="CA certificate",
+        help_text="Certificate of this CA (its own certificate, not a certificate it issued)",
+    )
     comments = CommentField()
 
     field_order = [
         "name",
         "parent",
+        "certificate",
         "type",
         "status",
         "provider",
@@ -116,12 +134,25 @@ class CertificateAuthorityForm(NautobotModelForm, TenancyForm):  # pylint: disab
         fields = "__all__"
 
     def __init__(self, *args, **kwargs):
-        """A CA cannot be issued by itself or by one of the CAs it issued."""
+        """A CA cannot be issued by itself or by one of the CAs it issued.
+
+        Certificates whose Common Name matches the CA name are suggested for the CA certificate (never selected
+        automatically).
+        """
         super().__init__(*args, **kwargs)
         if self.instance.present_in_database:
             self.fields["parent"].queryset = models.CertificateAuthority.objects.exclude(
                 pk__in=self.instance.descendants(include_self=True).values("pk")
             )
+            if not self.instance.certificate_id:
+                suggestions = get_ca_certificate_suggestions(self.instance.name)
+                if suggestions:
+                    names = ", ".join(str(certificate) for certificate in suggestions)
+                    self.fields[
+                        "certificate"
+                    ].help_text = (
+                        f"{self.fields['certificate'].help_text}. Suggestions (same Common Name as the CA): {names}"
+                    )
 
 
 class CertificateAuthorityBulkEditForm(  # pylint: disable=too-many-ancestors
@@ -165,7 +196,18 @@ class CertificateAuthorityFilterForm(  # pylint: disable=too-many-ancestors
     """Filter form for CertificateAuthority."""
 
     model = models.CertificateAuthority
-    field_order = ["q", "name", "parent", "has_parent", "type", "status", "provider", "tenant_group", "tenant"]
+    field_order = [
+        "q",
+        "name",
+        "parent",
+        "has_parent",
+        "has_certificate",
+        "type",
+        "status",
+        "provider",
+        "tenant_group",
+        "tenant",
+    ]
 
     q = forms.CharField(required=False, label="Search")
     name = forms.CharField(required=False, label="Name")
@@ -178,6 +220,11 @@ class CertificateAuthorityFilterForm(  # pylint: disable=too-many-ancestors
     has_parent = forms.NullBooleanField(
         required=False,
         label="Intermediate CA",
+        widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES),
+    )
+    has_certificate = forms.NullBooleanField(
+        required=False,
+        label="Has CA certificate",
         widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES),
     )
     type = forms.MultipleChoiceField(
@@ -376,6 +423,7 @@ class CertificateFilterForm(  # pylint: disable=too-many-ancestors
         "san",
         "status",
         "certificate_authority",
+        "is_ca_certificate",
         "expired",
         "auto_renew",
         "validation_level",
@@ -393,6 +441,9 @@ class CertificateFilterForm(  # pylint: disable=too-many-ancestors
         to_field_name="name",
         required=False,
         label="Certificate Authority",
+    )
+    is_ca_certificate = forms.NullBooleanField(
+        required=False, widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES), label="CA certificate"
     )
     expired = forms.NullBooleanField(
         required=False, widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES), label="Expired"

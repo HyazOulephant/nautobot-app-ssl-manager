@@ -66,6 +66,7 @@ class CertificateAuthorityFilterTestCase(  # pylint: disable=too-many-ancestors
     def setUpTestData(cls):
         """Create test data."""
         fixtures.create_certificate_authorities()
+        fixtures.create_ca_certificate()
 
     def test_q_search(self):
         """Search by name."""
@@ -151,6 +152,7 @@ class CertificateFilterTestCase(  # pylint: disable=too-many-ancestors
     def setUpTestData(cls):
         """Create test data."""
         fixtures.create_certificates()
+        fixtures.create_ca_certificate()
 
     def test_q_search(self):
         self.assertEqual(self.filterset({"q": "edge.example"}, self.queryset).qs.count(), 1)
@@ -174,7 +176,7 @@ class CertificateFilterTestCase(  # pylint: disable=too-many-ancestors
 
     def test_expired(self):
         self.assertEqual(self.filterset({"expired": True}, self.queryset).qs.count(), 1)
-        self.assertEqual(self.filterset({"expired": False}, self.queryset).qs.count(), 4)
+        self.assertEqual(self.filterset({"expired": False}, self.queryset).qs.count(), 5)
 
     def test_expires_within_days(self):
         self.assertEqual(
