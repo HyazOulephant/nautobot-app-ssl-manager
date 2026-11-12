@@ -36,8 +36,13 @@ def build_certificate(  # pylint: disable=too-many-arguments,too-many-locals
     is_ca=False,
     issuer_common_name="Test Issuing CA",
     days=90,
+    issuer_key=None,
 ):
-    """Build a self-issued certificate and return `(pem, certificate, private_key)`."""
+    """Build a certificate and return `(pem, certificate, private_key)`.
+
+    Signed with its own key (self-issued, the issuer name being only a label), or with `issuer_key` to build a real
+    chain whose signatures can be verified.
+    """
     private_key = _private_key(key_type)
     now = datetime.now(timezone.utc).replace(microsecond=0)
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)]) if common_name else x509.Name([])
@@ -67,8 +72,9 @@ def build_certificate(  # pylint: disable=too-many-arguments,too-many-locals
             x509.CertificatePolicies([x509.PolicyInformation(x509.ObjectIdentifier(oid), None) for oid in policies]),
             critical=False,
         )
-    algorithm = None if key_type == "ed25519" else hashes.SHA256()
-    certificate = builder.sign(private_key, algorithm)
+    signing_key = issuer_key or private_key
+    algorithm = None if isinstance(signing_key, ed25519.Ed25519PrivateKey) else hashes.SHA256()
+    certificate = builder.sign(signing_key, algorithm)
     pem = certificate.public_bytes(serialization.Encoding.PEM).decode()
     return pem, certificate, private_key
 
@@ -83,3 +89,17 @@ def private_key_pem(private_key):
 def fingerprint(certificate):
     """SHA-256 fingerprint as stored by the app (lowercase hex, no separators)."""
     return certificate.fingerprint(hashes.SHA256()).hex()
+
+
+def build_chain(root="Bundle Root CA", intermediate="Bundle Issuing CA", leaf="www.bundle.example.com"):
+    """Build a real chain (signatures verifiable): Root CA -> Intermediate CA -> leaf. Returns the 3 PEMs."""
+    root_pem, _, root_key = build_certificate(
+        common_name=root, issuer_common_name=root, is_ca=True, dns_names=(), eku=()
+    )
+    intermediate_pem, _, intermediate_key = build_certificate(
+        common_name=intermediate, issuer_common_name=root, is_ca=True, dns_names=(), eku=(), issuer_key=root_key
+    )
+    leaf_pem = build_certificate(
+        common_name=leaf, dns_names=(leaf,), issuer_common_name=intermediate, issuer_key=intermediate_key
+    )[0]
+    return root_pem, intermediate_pem, leaf_pem

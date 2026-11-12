@@ -235,8 +235,10 @@ class CACertificateViewTest(CACertificateTestCase):
         self.assertIn("CA certificate expires", content)
         self.assertIn(certificate.get_absolute_url(), content)
 
+        # The certificate detail view shows its CA through the certification chain panel only.
         content = self.client.get(certificate.get_absolute_url()).content.decode()
-        self.assertIn("CA certificate of", content)
+        self.assertNotIn("CA certificate of", content)
+        self.assertIn("(this certificate)", content)
         self.assertIn(self.root.get_absolute_url(), content)
 
     def test_list_view_optional_columns(self):

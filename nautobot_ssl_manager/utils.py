@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
 from cryptography.x509.oid import ExtensionOID, NameOID
@@ -130,6 +131,12 @@ class ParsedCertificate:  # pylint: disable=too-many-instance-attributes
     extended_key_usage: list = field(default_factory=list)
     validation_level: str = ""
     warnings: list = field(default_factory=list)
+    certificate: x509.Certificate = field(default=None, repr=False, compare=False)
+
+    @property
+    def is_self_signed(self):
+        """True if the certificate is verified as signed by its own key."""
+        return is_issued_by(self.certificate, self.certificate)
 
 
 def _first_attribute(name, oid):
@@ -221,12 +228,19 @@ def _parse_validation_level(certificate, parsed):
         parsed.warnings.append("Several validation level policies found: validation level left empty.")
 
 
-def parse_pem_certificate(pem_text):
-    """Parse a PEM certificate and return a `ParsedCertificate`.
+def is_issued_by(certificate, issuer):
+    """True if `certificate` is proven to be issued by `issuer`: issuer name and signature are verified."""
+    if certificate is None or issuer is None:
+        return False
+    try:
+        certificate.verify_directly_issued_by(issuer)
+    except (ValueError, TypeError, InvalidSignature):
+        return False
+    return True
 
-    Raises:
-        CertificateParseError: if the PEM contains a private key, is invalid, or is ambiguous.
-    """
+
+def _load_certificates(pem_text):
+    """Load all the certificates of a PEM text (private keys rejected)."""
     pem_text = (pem_text or "").strip()
     if not pem_text:
         raise CertificateParseError("The PEM is empty.")
@@ -236,12 +250,15 @@ def parse_pem_certificate(pem_text):
             "please paste the public certificate only."
         )
     try:
-        certificates = x509.load_pem_x509_certificates(pem_text.encode())
+        return x509.load_pem_x509_certificates(pem_text.encode())
     except ValueError as exc:
         raise CertificateParseError(f"Invalid PEM certificate: {exc}") from exc
 
-    certificate = _select_leaf(certificates)
+
+def _parse_x509(certificate):
+    """Build a `ParsedCertificate` from an x509 certificate."""
     parsed = ParsedCertificate(pem=certificate.public_bytes(serialization.Encoding.PEM).decode())
+    parsed.certificate = certificate
     parsed.common_name = _first_attribute(certificate.subject, NameOID.COMMON_NAME)
     parsed.issuer_common_name = _first_attribute(certificate.issuer, NameOID.COMMON_NAME)
     parsed.subject_dn = certificate.subject.rfc4514_string()
@@ -256,3 +273,28 @@ def parse_pem_certificate(pem_text):
     _parse_eku(certificate, parsed)
     _parse_validation_level(certificate, parsed)
     return parsed
+
+
+def parse_pem_certificate(pem_text):
+    """Parse a PEM certificate and return a `ParsedCertificate`.
+
+    Raises:
+        CertificateParseError: if the PEM contains a private key, is invalid, or is ambiguous.
+    """
+    return _parse_x509(_select_leaf(_load_certificates(pem_text)))
+
+
+def parse_pem_bundle(pem_text):
+    """Parse all the certificates of a PEM bundle (duplicates removed, file order kept).
+
+    Raises:
+        CertificateParseError: if the PEM contains a private key or is invalid.
+    """
+    parsed_certificates = []
+    fingerprints = set()
+    for certificate in _load_certificates(pem_text):
+        parsed = _parse_x509(certificate)
+        if parsed.fingerprint_sha256 not in fingerprints:
+            fingerprints.add(parsed.fingerprint_sha256)
+            parsed_certificates.append(parsed)
+    return parsed_certificates

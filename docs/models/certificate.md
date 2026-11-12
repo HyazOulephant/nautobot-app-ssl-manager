@@ -25,7 +25,7 @@ A Certificate describes an SSL/TLS certificate. Only the **public** certificate 
 
 Computed (read-only): `days_remaining`, `is_expired`, `is_wildcard`.
 
-A certificate can be the certificate of a Certificate Authority (see [CA certificate](certificateauthority.md#ca-certificate)); its detail view then shows *CA certificate of*. The `is_ca_certificate` filter lists (or excludes) these certificates.
+A certificate can be the certificate of a Certificate Authority (see [CA certificate](certificateauthority.md#ca-certificate)); its detail view then shows it under its CA in the *Certification chain* panel, marked as *this certificate*. The `is_ca_certificate` filter lists (or excludes) these certificates.
 
 Tags, notes, contacts/teams, custom fields, relationships and change logging are supported through the standard Nautobot features.
 
@@ -39,7 +39,29 @@ Tags, notes, contacts/teams, custom fields, relationships and change logging are
 
 Nothing is guessed: status, auto-renew, order number, tenant and *replaces* are left for the user. Certificates that may be replaced (same CN or shared SANs, not yet replaced) are listed as suggestions next to the *replaces* field but are never selected automatically.
 
-The import is refused if the PEM contains a private key, if the certificate already exists (same fingerprint), or if a bundle contains several end-entity certificates.
+The import is refused if the PEM contains a private key or if the certificate already exists (same fingerprint).
+
+When the issuer of the certificate is not in Nautobot (no stored CA certificate proven to have signed it, and no CA named like the issuer Common Name), a message links to the Certificate Authority creation form, pre-filled with the issuer Common Name: it is the only data available about the issuer. Importing the full chain (see below) creates the CA from its certificate instead.
+
+## Import a PEM bundle (full chain)
+
+When the pasted PEM contains several certificates (for example a `fullchain.pem`: certificate, intermediate CAs, sometimes the Root CA), a **review page** is displayed before anything is saved, with one block per certificate:
+
+- **Issued by**: established by **signature verification** (the issuer name and the signature are checked), not by the order of the certificates in the file. The issuer is searched in the bundle, then among the CA certificates stored in Nautobot ([CA certificate](certificateauthority.md#ca-certificate)). A self-signed CA certificate is a Root CA. When several issuers are possible, or none is found, the issuer is left empty with a note.
+- **In Nautobot**: certificates are recognized by their SHA-256 fingerprint, Certificate Authorities by their linked CA certificate. Nothing is duplicated.
+- **Proposed action**:
+    - *Create the Certificate Authority and create its certificate* for a CA certificate not in Nautobot; the CA is created under its issuer (*Issued by*) and linked to its certificate;
+    - *Link the certificate to the existing CA (same name)* when a CA with the same name exists without CA certificate; its *Issued by* is set from the proven issuer if it was empty;
+    - *Create the certificate* for an end-entity certificate, with its proven issuing CA;
+    - no action for what already exists. When a CA with the same name already has another CA certificate, only the certificate is created and a note asks to link it manually if it is a renewal.
+
+Only facts read from the certificates are pre-filled (names, and all the data of the single certificate import). The values that cannot be read from a certificate must be set on the review page: CA type and status, certificate status; provider and tenant are optional. Nothing is guessed from the `O=` attribute or any other heuristic.
+
+Each action can be unchecked. When an issuer is not created, *Issued by* (or the Certificate Authority of a certificate) is left empty. All the selected actions are applied in a single transaction: if one of them fails, nothing is saved and the error is displayed on the review page. Changes are recorded in the change log.
+
+Permissions: importing requires `add_certificate`; creating a CA requires `add_certificateauthority`, linking an existing CA requires `change_certificateauthority` on it. Actions that are not permitted are displayed disabled, with the reason.
+
+Private keys are rejected for the whole bundle, and a bundle whose certificates all exist already is refused.
 
 ## Download
 

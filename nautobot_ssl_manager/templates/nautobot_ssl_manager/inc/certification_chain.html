@@ -3,15 +3,42 @@
     <ul class="list-unstyled mb-0">
         {% for node in chain_nodes %}
             <li class="py-4" style="padding-left: {% widthratio forloop.counter0 1 24 %}px">
-                {% if not forloop.first %}<span class="mdi mdi-subdirectory-arrow-right text-secondary" aria-hidden="true"></span>{% endif %}
-                <span class="mdi {{ node.icon }}" aria-hidden="true"></span>
-                {% if node.is_current %}
-                    <strong>{{ node.object }}</strong>
-                {% else %}
-                    {{ node.object|hyperlinked_object:"name" }}
-                {% endif %}
-                <span class="badge bg-secondary">{{ node.role }}</span>
-                {% if node.object.status %}{{ node.object.status|hyperlinked_object_with_color }}{% endif %}
+                <div>
+                    {% if not forloop.first %}<span class="mdi mdi-subdirectory-arrow-right text-secondary" aria-hidden="true"></span>{% endif %}
+                    <span class="mdi {{ node.icon }}" aria-hidden="true"></span>
+                    {% if node.is_current and not node.certificate_is_current or node.is_leaf %}
+                        <strong>{{ node.object }}</strong>
+                    {% else %}
+                        {{ node.object|hyperlinked_object:"name" }}
+                    {% endif %}
+                    <span class="badge bg-secondary">{{ node.role }}</span>
+                    {% if node.object.status %}{{ node.object.status|hyperlinked_object_with_color }}{% endif %}
+                </div>
+                <div class="ps-24 small">
+                    {% if node.certificate %}
+                        {% with certificate=node.certificate %}
+                            {% if not node.is_leaf %}
+                                <span class="mdi mdi-file-certificate-outline" aria-hidden="true"></span>
+                                {% if node.certificate_is_current %}
+                                    <strong>{{ certificate }}</strong> <span class="text-secondary">(this certificate)</span>
+                                {% else %}
+                                    {{ certificate|hyperlinked_object:"name" }}
+                                {% endif %}
+                                {% if certificate.status %}{{ certificate.status|hyperlinked_object_with_color }}{% endif %}
+                                &middot;
+                            {% endif %}
+                            <span class="{% if certificate.is_expired %}text-danger{% elif certificate.days_remaining is not None and certificate.days_remaining < 30 %}text-warning{% else %}text-secondary{% endif %}">
+                                {% if certificate.is_expired %}Expired{% else %}Expires{% endif %} {{ certificate.not_after|date:"Y-m-d" }}
+                                {% if not certificate.is_expired %}({{ certificate.days_remaining }} days){% endif %}
+                            </span>
+                            {% if not certificate.pem %}<span class="text-warning">&middot; no PEM</span>{% endif %}
+                        {% endwith %}
+                    {% else %}
+                        <span class="text-warning">
+                            <span class="mdi mdi-alert-outline" aria-hidden="true"></span> No CA certificate linked
+                        </span>
+                    {% endif %}
+                </div>
             </li>
         {% endfor %}
     </ul>

@@ -213,6 +213,30 @@ class CertificationChainViewTest(TestCase):
             self.skipTest("No certificate without CA in fixtures")
         self.assertIn("No Certificate Authority set.", self._panel(certificate.get_absolute_url()))
 
+    def _chain(self, url):
+        """HTML of the chain list only."""
+        content = self._panel(url)
+        start = content.index('id="certification-chain"')
+        return content[start : content.index("</ul>", start)]
+
+    def test_ca_certificates_in_the_chain(self):
+        ca_certificate = fixtures.create_ca_certificate()
+        chain = self._chain(models.Certificate.objects.get(name="vpn-client-01").get_absolute_url())
+        # Lab Root CA has a CA certificate, Internal Issuing CA has none.
+        self.assertIn(ca_certificate.get_absolute_url(), chain)
+        self.assertIn("No CA certificate linked", chain)
+        self.assertEqual(chain.count("<li"), 3)
+
+    def test_ca_certificate_is_displayed_under_its_ca(self):
+        ca_certificate = fixtures.create_ca_certificate()
+        chain = self._chain(ca_certificate.get_absolute_url())
+        root = models.CertificateAuthority.objects.get(name="Lab Root CA")
+        # One level only (the Root CA), its certificate being the displayed one: no duplicated node.
+        self.assertEqual(chain.count("<li"), 1)
+        self.assertIn(root.get_absolute_url(), chain)
+        self.assertIn("(this certificate)", chain)
+        self.assertNotIn(">Certificate</span>", chain)
+
     def test_certificate_authority_chain_and_issued_cas(self):
         root = models.CertificateAuthority.objects.get(name="Lab Root CA")
         content = self._panel(root.get_absolute_url())

@@ -21,6 +21,10 @@ The `days_remaining` and `is_expired` values are computed from `not_after` and e
 
 *SSL Manager > Certificates > Import from PEM* reads a pasted certificate and opens the creation form pre-filled with the data it contains. Certificates that may be replaced by the new one (same CN or shared SANs, not yet replaced) are suggested next to the *replaces* field. See [Import from PEM](../models/certificate.md#import-from-pem) for the details and the refusal cases.
 
+### Register a full chain at once
+
+Pasting a PEM bundle (certificate and its CA certificates) in *Import from PEM* opens a review page: the chain is established by signature verification, existing objects are recognized, and the missing Certificate Authorities and certificates are proposed for creation, under their issuer. After confirmation, everything is created in a single transaction and the chain can be downloaded right away. See [Import a PEM bundle](../models/certificate.md#import-a-pem-bundle-full-chain).
+
 ### Track renewals
 
 A renewed certificate references the certificate it replaces (`replaces`); the previous certificate shows it as *Replaced by*. The `has_replaced_by` filter lists certificates that have (or have not) been replaced, for example to find active certificates that are still waiting for a renewal.
