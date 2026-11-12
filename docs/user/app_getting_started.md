@@ -14,6 +14,7 @@ Once installed, the app adds an **SSL Manager** tab to the navigation menu. The 
 2. **Create the Certificate Authorities** (*SSL Manager > Certificate Authorities*), starting with the Root CAs, then the Intermediate CAs with their *Issued by* field set to the issuing CA. Set the type (`public` or `private`) and, if relevant, the provider.
 3. **Add the certificates** (*SSL Manager > Certificates*):
     - either with **Import from PEM**: paste the public certificate, check the pre-filled form, then complete the fields that cannot be read from the certificate (status, auto-renew, order number, tenant, replaced certificate);
+    - or with **Import from PEM** and a full chain (PEM bundle): a review page proposes to create the missing Certificate Authorities and certificates at once, which also covers step 2;
     - or with the standard **Add** form, or a CSV import.
 
 !!! tip

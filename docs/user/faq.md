@@ -10,7 +10,9 @@ Expiration is computed from the `not_after` date (`is_expired`, `days_remaining`
 
 ## Why was the Certificate Authority not filled during the import from PEM?
 
-The import only links a CA whose name is exactly the issuer Common Name of the certificate. If no CA matches, the field is left empty for the user to fill.
+When a single certificate is imported, the import only links a CA whose name is exactly the issuer Common Name of the certificate. If no CA matches, the field is left empty for the user to fill, and a message proposes to create the missing CA when it is not in Nautobot.
+
+When a PEM bundle (full chain) is imported, the issuer is established by signature verification instead; it is left empty when several issuers are possible or none is found (see [Import a PEM bundle](../models/certificate.md#import-a-pem-bundle-full-chain)).
 
 ## Why was the validation level not filled during the import from PEM?
 

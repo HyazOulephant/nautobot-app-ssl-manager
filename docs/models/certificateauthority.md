@@ -26,13 +26,13 @@ This role is not stored: it is deduced from the tree and exposed as `chain_role`
 
 A CA cannot be issued by itself or by one of the CAs it issued, and a CA cannot be deleted while it still has issued CAs.
 
-The Certificate Authorities list is displayed as a tree (as long as it is not sorted on a column). The detail view of a CA and of a [Certificate](certificate.md) shows a *Certification chain* panel, from the Root CA down to the displayed object. The CA detail view also lists the CAs and the certificates it issued.
+The Certificate Authorities list is displayed as a tree (as long as it is not sorted on a column). The detail view of a CA and of a [Certificate](certificate.md) shows a *Certification chain* panel, from the Root CA down to the displayed object. Each CA of the chain is displayed with its [CA certificate](#ca-certificate) (status and expiration), or a warning when no CA certificate is linked. The Certificate detail view shows the issuing CA only through this panel. A CA certificate is displayed under its own CA, marked as *this certificate*. The CA detail view also lists the CAs and the certificates it issued.
 
 Available filters: `parent` (name or ID), `has_parent`, `children` (name or ID), `has_children`.
 
 ## CA certificate
 
-A CA can be linked to its own certificate, stored as a regular [Certificate](certificate.md). The CA detail view shows this certificate with its expiration date and the number of days remaining; the Certificate Authorities list has optional *CA certificate* and *CA certificate expires* columns. The certificate detail view shows the CA it belongs to (*CA certificate of*).
+A CA can be linked to its own certificate, stored as a regular [Certificate](certificate.md). The CA detail view shows this certificate with its expiration date and the number of days remaining; the Certificate Authorities list has optional *CA certificate* and *CA certificate expires* columns. The certificate detail view shows the CA it belongs to in its *Certification chain* panel.
 
 A certificate can be the CA certificate of one CA only. Deleting the certificate unlinks it from the CA (the CA is kept). When a CA certificate is renewed, link the new certificate to the CA and record the previous one in its `replaces` field.
 
