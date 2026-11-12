@@ -40,22 +40,41 @@ class CertificationChainPanel(Panel):
     def get_extra_context(self, context):
         """Build the chain nodes, Root CA first."""
         obj = get_obj_from_context(context)
+        nodes = []
         if isinstance(obj, models.Certificate):
-            issuers = obj.chain
-            nodes = []
-            if issuers:
-                nodes = [self._ca_node(ca) for ca in reversed(issuers)]
+            authority = obj.ca_certificate_authority
+            if authority is not None:
+                nodes = [self._ca_node(ca, current_certificate=obj) for ca in reversed(authority.chain)]
+            elif obj.chain:
+                nodes = [self._ca_node(ca) for ca in reversed(obj.chain)]
                 nodes.append(
-                    {"object": obj, "role": "Certificate", "icon": "mdi-file-certificate-outline", "is_current": True}
+                    {
+                        "object": obj,
+                        "role": "Certificate",
+                        "icon": "mdi-file-certificate-outline",
+                        "is_current": True,
+                        "certificate": obj,
+                        "certificate_is_current": True,
+                        "is_leaf": True,
+                    }
                 )
         else:
             nodes = [self._ca_node(ca, is_current=ca.pk == obj.pk) for ca in reversed(obj.chain)]
         return {**super().get_extra_context(context), "chain_nodes": nodes}
 
     @staticmethod
-    def _ca_node(ca, is_current=False):
+    def _ca_node(ca, is_current=False, current_certificate=None):
         icon = "mdi-shield-lock-outline" if ca.chain_role == ca.ROLE_ROOT else "mdi-shield-check-outline"
-        return {"object": ca, "role": f"{ca.chain_role} CA", "icon": icon, "is_current": is_current}
+        is_ca_of_current = current_certificate is not None and ca.certificate_id == current_certificate.pk
+        return {
+            "object": ca,
+            "role": f"{ca.chain_role} CA",
+            "icon": icon,
+            "is_current": is_current or is_ca_of_current,
+            "certificate": ca.certificate,
+            "certificate_is_current": is_ca_of_current,
+            "is_leaf": False,
+        }
 
 
 class CertificateDownloadButton(Button):
@@ -320,16 +339,9 @@ class CertificateUIViewSet(NautobotUIViewSet):
                     "name",
                     "common_name",
                     "status",
-                    "certificate_authority",
-                    "certificate_authority__provider",
-                    "ca_certificate_authority",
                     "tenant",
                     "description",
                 ],
-                key_transforms={
-                    "certificate_authority__provider": "Provider",
-                    "ca_certificate_authority": "CA certificate of",
-                },
             ),
             ObjectFieldsPanel(
                 weight=200,
