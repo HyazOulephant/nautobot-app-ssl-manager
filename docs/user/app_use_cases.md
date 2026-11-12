@@ -33,3 +33,7 @@ A renewed certificate references the certificate it replaces (`replaces`); the p
 ### Explore certification chains
 
 The detail views of a Certificate Authority and of a Certificate show the certification chain from the Root CA. The CA detail view also lists the CAs and the certificates it issued. Certificates can be filtered by CA (`certificate_authority`) or by provider (`provider`, through the CA).
+
+### Deploy a certificate with its chain
+
+When deploying or renewing a certificate on a server or a load balancer, the *Download* menu of the certificate detail view provides the certificate alone (PEM or DER) or with its chain (PEM bundle, or PKCS#7 including the Root CA), built from the CA certificates linked to the Certificate Authorities. The same files are available through the REST API for automation. See [Download](../models/certificate.md#download).
