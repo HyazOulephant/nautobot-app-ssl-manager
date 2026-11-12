@@ -40,3 +40,28 @@ Tags, notes, contacts/teams, custom fields, relationships and change logging are
 Nothing is guessed: status, auto-renew, order number, tenant and *replaces* are left for the user. Certificates that may be replaced (same CN or shared SANs, not yet replaced) are listed as suggestions next to the *replaces* field but are never selected automatically.
 
 The import is refused if the PEM contains a private key, if the certificate already exists (same fingerprint), or if a bundle contains several end-entity certificates.
+
+## Download
+
+The *Download* menu of the certificate detail view serves the public certificate stored in the `pem` field, optionally with its chain. Private keys are never stored, so they are never part of a download.
+
+| Entry | Format | File name (example) |
+| ----- | ------ | ------------------- |
+| Certificate (PEM) | PEM | `www.example.com.pem` |
+| Certificate (DER) | DER (binary, single certificate) | `www.example.com.der` |
+| Certificate + chain (PEM) | PEM bundle: the certificate, then its intermediate CA certificates | `www.example.com-chain.pem` |
+| Certificate + chain + root (PEM) | PEM bundle: the certificate, its intermediate CA certificates, then the Root CA certificate | `www.example.com-chain-with-root.pem` |
+| Certificate + chain + root (PKCS#7) | PKCS#7 `.p7b`, DER encoded, certificates only | `www.example.com-chain-with-root.p7b` |
+
+The file name is built from the Common Name (or the name): `*` is replaced with `wildcard` and any character other than letters, digits, `.`, `_` and `-` is replaced with `_`. In a PEM bundle, the certificates are ordered from the certificate up to the Root CA; a PKCS#7 file stores its certificates as a set, without significant order.
+
+The chain is built from the Certificate Authority tree (issuing CA, then its issuers), using the [CA certificate](certificateauthority.md#ca-certificate) linked to each CA. A self-signed CA certificate (Root CA) is only included in the *with root* entries; when the top CA of the tree is not self-signed (the Root CA is not recorded in Nautobot), its certificate is always included.
+
+The download fails with an explicit message, instead of returning an incomplete or wrong file, when:
+
+- no PEM is stored for the certificate;
+- no Certificate Authority is set on the certificate (chain only);
+- a CA of the chain has no CA certificate linked, or its CA certificate has no PEM (the CAs concerned are listed);
+- the chain is inconsistent: a certificate issuer does not match the subject of the next CA certificate.
+
+Unavailable entries are disabled in the menu, with the reason displayed on hover. Downloading requires the permission to view the certificate; the chain entries also require the permission to view the Certificate Authorities and CA certificates of the chain.

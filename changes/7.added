@@ -1,0 +1,1 @@
+Added Download menu on the Certificate detail view and REST API endpoint: certificate only (PEM, DER) or with its chain (PEM bundle with or without the Root CA, PKCS#7), built from the CA certificates; incomplete or inconsistent chains are refused.

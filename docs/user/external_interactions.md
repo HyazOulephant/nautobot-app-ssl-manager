@@ -50,5 +50,24 @@ for certificate in response.json()["results"]:
     print(certificate["common_name"], certificate["not_after"], certificate["days_remaining"])
 ```
 
+### Download a certificate
+
+`GET /api/plugins/nautobot-ssl-manager/certificates/<id>/download/` returns the public certificate as a file (see [Download](../models/certificate.md#download)). Query parameters:
+
+- `file_format`: `pem` (default), `der` (single certificate only) or `p7b` (PKCS#7, DER encoded);
+- `chain`: `true` to append the CA certificates of the chain;
+- `include_root`: with `chain`, `true` to also include the self-signed Root CA certificate.
+
+The response is `400` with a `detail` message when the file cannot be built (no PEM, incomplete or inconsistent chain), and `403` when a Certificate Authority or CA certificate of the chain is not visible to the user.
+
+Example: download the certificate with its intermediate CAs (without the Root CA), as usually served by a web server.
+
+```shell
+curl -s -f \
+  -H "Authorization: Token $NAUTOBOT_TOKEN" \
+  -o fullchain.pem \
+  "https://nautobot.example.com/api/plugins/nautobot-ssl-manager/certificates/$CERTIFICATE_ID/download/?chain=true"
+```
+
 !!! note
     The import from PEM is a UI feature. Through the REST API, the certificate data must be sent explicitly; a `pem` value is still validated (a private key is rejected).

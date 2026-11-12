@@ -8,8 +8,11 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
+from django.utils.http import urlencode
 from nautobot.apps.ui import (
     BaseTextPanel,
+    Button,
+    DropdownButton,
     ObjectDetailContent,
     ObjectFieldsPanel,
     ObjectsTablePanel,
@@ -24,7 +27,7 @@ from nautobot.core.views.utils import get_obj_from_context
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from nautobot_ssl_manager import choices, filters, forms, models, tables
+from nautobot_ssl_manager import choices, downloads, filters, forms, models, tables
 from nautobot_ssl_manager.api import serializers
 
 
@@ -53,6 +56,72 @@ class CertificationChainPanel(Panel):
     def _ca_node(ca, is_current=False):
         icon = "mdi-shield-lock-outline" if ca.chain_role == ca.ROLE_ROOT else "mdi-shield-check-outline"
         return {"object": ca, "role": f"{ca.chain_role} CA", "icon": icon, "is_current": is_current}
+
+
+class CertificateDownloadButton(Button):
+    """Entry of the Download menu: links to the download view, disabled (with the reason) when not available."""
+
+    def __init__(self, *, file_format, chain=False, include_root=False, **kwargs):
+        """Store the download parameters."""
+        self.file_format = file_format
+        self.chain = chain
+        self.include_root = include_root
+        super().__init__(link_name="plugins:nautobot_ssl_manager:certificate_download", **kwargs)
+
+    def get_link(self, context):
+        """Download URL with its query parameters."""
+        params = {"file_format": self.file_format}
+        if self.chain:
+            params["chain"] = "true"
+        if self.include_root:
+            params["include_root"] = "true"
+        return f"{super().get_link(context)}?{urlencode(params)}"
+
+    def get_extra_context(self, context):
+        """Disable the entry with the reason when the file cannot be built."""
+        extra_context = super().get_extra_context(context)
+        obj = get_obj_from_context(context, self.context_object_key)
+        if self.chain:
+            reason = downloads.chain_unavailable_reason(obj)
+        else:
+            reason = None if obj.pem else "No PEM is stored for this certificate."
+        if reason:
+            extra_context["attributes"] = {"disabled": "disabled", "aria-disabled": "true", "title": reason}
+        return extra_context
+
+
+def _download_buttons():
+    chain_permissions = [
+        "nautobot_ssl_manager.view_certificate",
+        "nautobot_ssl_manager.view_certificateauthority",
+    ]
+    return [
+        CertificateDownloadButton(label="Certificate (PEM)", file_format=downloads.FORMAT_PEM, weight=100),
+        CertificateDownloadButton(label="Certificate (DER)", file_format=downloads.FORMAT_DER, weight=200),
+        CertificateDownloadButton(
+            label="Certificate + chain (PEM)",
+            file_format=downloads.FORMAT_PEM,
+            chain=True,
+            required_permissions=chain_permissions,
+            weight=300,
+        ),
+        CertificateDownloadButton(
+            label="Certificate + chain + root (PEM)",
+            file_format=downloads.FORMAT_PEM,
+            chain=True,
+            include_root=True,
+            required_permissions=chain_permissions,
+            weight=400,
+        ),
+        CertificateDownloadButton(
+            label="Certificate + chain + root (PKCS#7)",
+            file_format=downloads.FORMAT_P7B,
+            chain=True,
+            include_root=True,
+            required_permissions=chain_permissions,
+            weight=500,
+        ),
+    ]
 
 
 class CertificateProviderUIViewSet(NautobotUIViewSet):
@@ -319,7 +388,39 @@ class CertificateUIViewSet(NautobotUIViewSet):
                 render_as=BaseTextPanel.RenderOptions.CODE,
             ),
         ],
+        extra_buttons=[
+            DropdownButton(
+                label="Download",
+                icon="mdi-download",
+                weight=100,
+                required_permissions=["nautobot_ssl_manager.view_certificate"],
+                children=_download_buttons(),
+            ),
+        ],
     )
+
+    @action(
+        detail=True,
+        methods=["GET"],
+        url_path="download",
+        url_name="download",
+        custom_view_base_action="view",
+    )
+    def download(self, request, *args, **kwargs):
+        """Download the public certificate, optionally with its chain (see `downloads`)."""
+        certificate = self.get_object()
+        try:
+            download = downloads.build_download(
+                certificate,
+                file_format=request.GET.get("file_format"),
+                chain=downloads.parse_bool(request.GET.get("chain")),
+                include_root=downloads.parse_bool(request.GET.get("include_root")),
+                user=request.user,
+            )
+        except downloads.CertificateDownloadError as exc:
+            messages.error(request, f"Download failed: {exc}")
+            return redirect(certificate.get_absolute_url())
+        return downloads.download_response(download)
 
     def create(self, request, *args, **kwargs):
         """Pre-fill the creation form from a previously parsed PEM (see `import_pem`)."""
