@@ -148,10 +148,11 @@ class CertificateImportPEMViewTest(TestCase):
         # Suggestions are displayed but never selected automatically.
         self.assertIn("Suggestions (same CN or shared SANs)", content)
         self.assertIn("www.example.com 2026", content)
-        # The CA is pre-selected in the rendered form (the option tag spans several lines).
-        self.assertRegex(content, rf'<option value="{authority.pk}"\s+selected\s*>')
+        # Same name only (no CA certificate to verify the signature): suggested, not pre-selected.
+        self.assertNotRegex(content, rf'<option value="{authority.pk}"\s+selected\s*>')
         form = response.context["form"]
-        self.assertEqual(form.initial["certificate_authority"], str(authority.pk))
+        self.assertIsNone(form.initial.get("certificate_authority"))
+        self.assertIn("Suggestion, not verified (same name as the issuer Common Name): Lab Root CA", content)
         self.assertIsNone(form.initial.get("replaces"))
         self.assertEqual(form.initial["validation_level"], "ov")
 

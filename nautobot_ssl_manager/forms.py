@@ -25,7 +25,7 @@ from nautobot.extras.models import Status
 from nautobot.tenancy.forms import TenancyFilterForm, TenancyForm
 from nautobot.tenancy.models import Tenant
 
-from nautobot_ssl_manager import bundles, choices, models, utils
+from nautobot_ssl_manager import bundles, choices, issuers, models, utils
 
 #
 # Certificate Providers
@@ -84,6 +84,23 @@ class CertificateProviderFilterForm(NautobotFilterForm, TenancyFilterForm):  # p
 #
 
 CA_CERTIFICATE_SUGGESTIONS_LIMIT = 5
+
+
+def get_parent_hint(authority):
+    """Issuer of a CA read from its CA certificate (self-signed, or proven by signature). Never selected automatically."""
+    if not authority.certificate_id or not authority.certificate.pem:
+        return ""
+    try:
+        parsed = utils.parse_pem_certificate(authority.certificate.pem)
+    except utils.CertificateParseError:
+        return ""
+    if parsed.is_self_signed:
+        return "Its CA certificate is self-signed: this is a Root CA, leave empty."
+    proven = [ca for ca in issuers.find_issuing_authorities(parsed.certificate) if ca.pk != authority.pk]
+    if not proven:
+        return ""
+    names = ", ".join(str(ca) for ca in proven)
+    return f"Suggestion, proven by the signature of its CA certificate: {names}."
 
 
 def get_ca_certificate_suggestions(name):
@@ -145,6 +162,8 @@ class CertificateAuthorityForm(NautobotModelForm, TenancyForm):  # pylint: disab
             self.fields["parent"].queryset = models.CertificateAuthority.objects.exclude(
                 pk__in=self.instance.descendants(include_self=True).values("pk")
             )
+            if not self.instance.parent_id and (hint := get_parent_hint(self.instance)):
+                self.fields["parent"].help_text = f"{self.fields['parent'].help_text} {hint}"
             if not self.instance.certificate_id:
                 suggestions = get_ca_certificate_suggestions(self.instance.name)
                 if suggestions:
@@ -366,9 +385,26 @@ class CertificateForm(NautobotModelForm, TenancyForm):  # pylint: disable=too-ma
             "not_after": DateTimePicker(),
         }
 
-    def __init__(self, *args, replaces_suggestions=None, **kwargs):
-        """Optionally display suggested certificates for the `replaces` field (never selected automatically)."""
+    ISSUER_HINTS = {
+        issuers.METHOD_SIGNATURE: "Pre-selected: the signature of the certificate is verified with the CA certificate "
+        "of {names}.",
+        issuers.METHOD_AMBIGUOUS: "Several Certificate Authorities are proven by signature (e.g. cross-signing): "
+        "{names}. Choose the right one.",
+        issuers.METHOD_NAME: "Suggestion, not verified (same name as the issuer Common Name): {names}. Link its CA "
+        "certificate to verify the signature.",
+    }
+
+    def __init__(self, *args, replaces_suggestions=None, issuer_hint=None, **kwargs):
+        """Optionally display suggested certificates for `replaces` and how the issuing CA was identified.
+
+        `issuer_hint` is `(method, authorities)` (see `issuers.IssuerIdentification`). Suggestions are never selected
+        automatically: only a CA proven by signature is pre-selected (through the initial data).
+        """
         super().__init__(*args, **kwargs)
+        if issuer_hint:
+            method, authorities = issuer_hint
+            names = ", ".join(str(authority) for authority in authorities)
+            self.fields["certificate_authority"].help_text = self.ISSUER_HINTS[method].format(names=names)
         if self.instance.present_in_database:
             self.fields["replaces"].queryset = models.Certificate.objects.exclude(pk=self.instance.pk)
         if replaces_suggestions:
