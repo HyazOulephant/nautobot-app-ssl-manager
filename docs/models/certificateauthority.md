@@ -44,6 +44,8 @@ The link is refused when the data stored in Nautobot proves it is inconsistent:
 
 These checks also apply when a certificate already linked to a CA is edited. When the data is missing (no PEM, no issuer), nothing is checked.
 
+When the CA has a CA certificate but no *Issued by*, the edit form suggests its issuer, read from that certificate: a Root CA if it is self-signed, or the CA proven by signature. It is never selected automatically.
+
 The CA certificate is never linked automatically. The CA edit form lists, as suggestions, the certificates not yet linked to a CA whose Common Name is the CA name. When a CA certificate is imported from a PEM, a message reminds to link it to its CA and names the CA with the same name as the Common Name, if there is exactly one.
 
 To follow the expiration of CA certificates, filter the Certificates with `is_ca_certificate=True` combined with `expired` or `expires_within_days`.

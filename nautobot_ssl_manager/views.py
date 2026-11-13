@@ -27,7 +27,7 @@ from nautobot.core.views.utils import get_obj_from_context
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from nautobot_ssl_manager import bundles, choices, downloads, filters, forms, models, tables, utils
+from nautobot_ssl_manager import bundles, choices, downloads, filters, forms, issuers, models, tables, utils
 from nautobot_ssl_manager.api import serializers
 
 
@@ -271,8 +271,15 @@ def _format_datetime_for_form(value):
     return timezone.localtime(value).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def build_initial_from_pem(parsed):
-    """Build the Certificate form initial data from a `ParsedCertificate` (only facts read from the PEM)."""
+ISSUER_SESSION_KEY = "_issuer"
+
+
+def build_initial_from_pem(parsed, identification=None):
+    """Build the Certificate form initial data from a `ParsedCertificate` (only facts read from the PEM).
+
+    The Certificate Authority is pre-selected only when it is proven by signature (`issuers.identify_issuer`); how it
+    was identified is stored under `ISSUER_SESSION_KEY` to explain it (or list suggestions) on the form.
+    """
     initial = {
         "name": parsed.common_name or (parsed.subject_alternative_names[0] if parsed.subject_alternative_names else ""),
         "common_name": parsed.common_name,
@@ -287,11 +294,12 @@ def build_initial_from_pem(parsed):
         "extended_key_usage": parsed.extended_key_usage,
         "pem": parsed.pem,
     }
-    # Only propose a Certificate Authority on an exact, unambiguous name match.
-    if parsed.issuer_common_name:
-        authorities = list(models.CertificateAuthority.objects.filter(name=parsed.issuer_common_name)[:2])
-        if len(authorities) == 1:
-            initial["certificate_authority"] = str(authorities[0].pk)
+    if identification is None:
+        identification = issuers.identify_issuer(parsed)
+    if identification.proven_authority is not None:
+        initial["certificate_authority"] = str(identification.proven_authority.pk)
+    if identification.method:
+        initial[ISSUER_SESSION_KEY] = identification.to_session()
     return {key: value for key, value in initial.items() if value not in (None, "", [])}
 
 
@@ -310,17 +318,13 @@ def get_replaces_suggestions(common_name, subject_alternative_names, exclude_fin
     return list(queryset.order_by("-not_after")[:REPLACES_SUGGESTIONS_LIMIT])
 
 
-def get_missing_issuer_hint(parsed):
+def get_missing_issuer_hint(parsed, identification):
     """Hint displayed when the issuer of an imported certificate is not in Nautobot (link to create its CA).
 
     The issuer is considered present when a stored CA certificate is proven to have issued the certificate, or when a
     CA is named exactly like the issuer Common Name. The issuer Common Name is the only data available about it.
     """
-    if parsed.is_self_signed or not parsed.issuer_common_name:
-        return None
-    if models.CertificateAuthority.objects.filter(name=parsed.issuer_common_name).exists():
-        return None
-    if bundles.find_issuing_authorities(parsed.certificate):
+    if parsed.is_self_signed or not parsed.issuer_common_name or identification.method:
         return None
     url = f"{reverse('plugins:nautobot_ssl_manager:certificateauthority_add')}?{urlencode({'name': parsed.issuer_common_name})}"
     return format_html(
@@ -331,8 +335,12 @@ def get_missing_issuer_hint(parsed):
     )
 
 
-def get_ca_certificate_hint(parsed):
-    """Hint displayed when importing a CA certificate. The CA is only suggested, never linked automatically."""
+def get_ca_certificate_hint(parsed, identification):
+    """Hint displayed when importing a CA certificate. The CA is only suggested, never linked automatically.
+
+    The issuer of the CA certificate tells the *Issued by* of the CA it belongs to: none for a self-signed certificate
+    (Root CA), the CA proven by signature otherwise.
+    """
     hint = "This is a CA certificate: once saved, link it to its Certificate Authority (CA certificate field)."
     if parsed.common_name:
         authorities = list(
@@ -340,6 +348,13 @@ def get_ca_certificate_hint(parsed):
         )
         if len(authorities) == 1:
             hint += f" Suggested Certificate Authority (same name as the Common Name): {authorities[0]}."
+    if parsed.is_self_signed:
+        hint += " It is self-signed: its Certificate Authority is a Root CA (no Issued by)."
+    elif identification.proven_authority is not None:
+        hint += (
+            f" Its issuer, proven by signature, is {identification.proven_authority}: "
+            "set it as Issued by of its Certificate Authority."
+        )
     return hint
 
 
@@ -466,18 +481,32 @@ class CertificateUIViewSet(NautobotUIViewSet):
         if request.method == "GET" and token:
             initial = request.session.get(PEM_IMPORT_SESSION_KEY, {}).get(token)
             if initial:
+                initial = dict(initial)
+                issuer = initial.pop(ISSUER_SESSION_KEY, None)
                 suggestions = get_replaces_suggestions(
                     initial.get("common_name"),
                     initial.get("subject_alternative_names"),
                     exclude_fingerprint=initial.get("fingerprint_sha256"),
                 )
                 form = self.get_form_class()(
-                    instance=self.get_object(), initial=initial, replaces_suggestions=suggestions
+                    instance=self.get_object(),
+                    initial=initial,
+                    replaces_suggestions=suggestions,
+                    issuer_hint=self._issuer_hint(issuer, request.user),
                 )
                 restrict_form_fields(form, request.user)
                 return Response({"form": form})
             messages.warning(request, "The PEM import has expired, please import the certificate again.")
         return super().create(request, *args, **kwargs)
+
+    @staticmethod
+    def _issuer_hint(issuer, user):
+        """`(method, authorities visible to the user)` from the issuer identification stored with the PEM import."""
+        if not issuer or not issuer.get("method"):
+            return None
+        visible = models.CertificateAuthority.objects.restrict(user, "view").filter(pk__in=issuer["authorities"])
+        authorities = sorted(visible, key=lambda authority: issuer["authorities"].index(str(authority.pk)))
+        return (issuer["method"], authorities) if authorities else None
 
     @action(
         detail=False,
@@ -497,15 +526,16 @@ class CertificateUIViewSet(NautobotUIViewSet):
             parsed = form.parsed
             for warning in parsed.warnings:
                 messages.warning(request, warning)
+            identification = issuers.identify_issuer(parsed)
             if parsed.is_ca:
-                messages.info(request, get_ca_certificate_hint(parsed))
-            if hint := get_missing_issuer_hint(parsed):
+                messages.info(request, get_ca_certificate_hint(parsed, identification))
+            if hint := get_missing_issuer_hint(parsed, identification):
                 messages.info(request, hint)
             pending = request.session.get(PEM_IMPORT_SESSION_KEY, {})
             # Keep only the most recent imports to bound the session size.
             pending = dict(list(pending.items())[-(PEM_IMPORT_SESSION_MAX_ENTRIES - 1) :])
             token = uuid4().hex
-            pending[token] = build_initial_from_pem(parsed)
+            pending[token] = build_initial_from_pem(parsed, identification)
             request.session[PEM_IMPORT_SESSION_KEY] = pending
             return redirect(f"{reverse('plugins:nautobot_ssl_manager:certificate_add')}?pem_import={token}")
         return Response({"form": form})

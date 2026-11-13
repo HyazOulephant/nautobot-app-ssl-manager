@@ -35,11 +35,29 @@ Tags, notes, contacts/teams, custom fields, relationships and change logging are
 
 - Common Name, SANs, serial number, SHA-256 fingerprint, validity dates, key algorithm and size, Extended Key Usage;
 - validation level, only if a CA/Browser Forum policy OID (DV `2.23.140.1.2.1`, OV `2.23.140.1.2.2`, EV `2.23.140.1.1`) is present;
-- Certificate Authority, only if a CA named exactly like the issuer Common Name exists.
+- Certificate Authority, only if it is **proven by signature** (see [Issuing CA identification](#issuing-ca-identification)).
 
 Nothing is guessed: status, auto-renew, order number, tenant and *replaces* are left for the user. Certificates that may be replaced (same CN or shared SANs, not yet replaced) are listed as suggestions next to the *replaces* field but are never selected automatically.
 
 The import is refused if the PEM contains a private key or if the certificate already exists (same fingerprint).
+
+### Issuing CA identification
+
+The issuing CA is identified with the CA certificates linked to the Certificate Authorities ([CA certificate](certificateauthority.md#ca-certificate)):
+
+- candidates are pre-selected with the key identifiers (Authority Key Identifier of the certificate = Subject Key Identifier of the CA certificate) when both extensions are present; otherwise the issuer name of the certificate must match the subject of the CA certificate;
+- a CA is **proven** only if the signature of the certificate is verified with the public key of its CA certificate.
+
+| Result | Creation form |
+| ------ | ------------- |
+| Exactly one CA proven | Pre-selected; the help text states that the signature is verified. |
+| Several CAs proven (e.g. cross-signed or re-issued CA certificates linked to different CAs) | Nothing pre-selected; the CAs are listed in the help text. |
+| No CA proven, but a CA is named exactly like the issuer Common Name | Nothing pre-selected; the CA is listed as an unverified suggestion. |
+| Nothing found | Nothing pre-selected. |
+
+A renamed CA is therefore still found, and a CA that only shares the issuer name is never selected. Only the CAs visible to the user are named.
+
+When a CA certificate is imported, a message tells which CA it belongs to (same name, suggestion only) and its issuer: none if it is self-signed (Root CA), or the CA proven by signature, to set as *Issued by*.
 
 When the issuer of the certificate is not in Nautobot (no stored CA certificate proven to have signed it, and no CA named like the issuer Common Name), a message links to the Certificate Authority creation form, pre-filled with the issuer Common Name: it is the only data available about the issuer. Importing the full chain (see below) creates the CA from its certificate instead.
 

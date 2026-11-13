@@ -239,6 +239,22 @@ def is_issued_by(certificate, issuer):
     return True
 
 
+def authority_key_identifier(certificate):
+    """Key identifier of the Authority Key Identifier extension, or None."""
+    try:
+        return certificate.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER).value.key_identifier
+    except x509.ExtensionNotFound:
+        return None
+
+
+def subject_key_identifier(certificate):
+    """Digest of the Subject Key Identifier extension, or None."""
+    try:
+        return certificate.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER).value.digest
+    except x509.ExtensionNotFound:
+        return None
+
+
 def _load_certificates(pem_text):
     """Load all the certificates of a PEM text (private keys rejected)."""
     pem_text = (pem_text or "").strip()

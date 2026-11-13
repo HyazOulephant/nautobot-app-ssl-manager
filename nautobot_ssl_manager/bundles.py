@@ -10,12 +10,11 @@ Only facts are used:
 
 from dataclasses import dataclass, field
 
-from cryptography import x509
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
 
-from nautobot_ssl_manager import models, utils
+from nautobot_ssl_manager import issuers, models, utils
 
 ACTION_NONE = "none"
 ACTION_CREATE_CERTIFICATE = "create_certificate"
@@ -25,33 +24,6 @@ ACTION_LINK_CA = "link_ca"
 ROLE_ROOT = "Root CA"
 ROLE_INTERMEDIATE = "Intermediate CA"
 ROLE_CERTIFICATE = "Certificate"
-
-
-def find_issuing_authorities(certificate, authorities_with_certificate=None):
-    """Certificate Authorities whose stored CA certificate is proven to have issued `certificate` (x509).
-
-    `authorities_with_certificate` is an optional list of `(CertificateAuthority, x509.Certificate)` to avoid loading
-    the CA certificates several times.
-    """
-    if authorities_with_certificate is None:
-        authorities_with_certificate = load_authority_certificates()
-    issuers = []
-    for authority, ca_certificate in authorities_with_certificate:
-        if authority not in issuers and utils.is_issued_by(certificate, ca_certificate):
-            issuers.append(authority)
-    return issuers
-
-
-def load_authority_certificates():
-    """`(CertificateAuthority, x509.Certificate)` for every CA whose CA certificate has a valid PEM."""
-    result = []
-    queryset = models.CertificateAuthority.objects.filter(certificate__isnull=False).exclude(certificate__pem="")
-    for authority in queryset.select_related("certificate"):
-        try:
-            result.append((authority, x509.load_pem_x509_certificate(authority.certificate.pem.encode())))
-        except ValueError:
-            continue  # Invalid PEMs are reported by the Certificate validation.
-    return result
 
 
 def default_certificate_name(parsed):
@@ -145,7 +117,7 @@ class BundlePlan:
         """Analyze the parsed certificates of the bundle for `user` (permissions)."""
         self.user = user
         self.entries = [BundleEntry(index=index, parsed=parsed) for index, parsed in enumerate(parsed_certificates)]
-        authority_certificates = load_authority_certificates()
+        authority_certificates = issuers.load_authority_certificates()
         for entry in self.entries:
             self._find_existing(entry)
             self._find_issuer(entry, authority_certificates)
@@ -180,20 +152,20 @@ class BundlePlan:
         if utils.is_issued_by(certificate, certificate):
             entry.self_signed = True
             return
-        issuers = [
+        bundle_issuers = [
             other
             for other in self.entries
             if other is not entry and other.is_ca and utils.is_issued_by(certificate, other.parsed.certificate)
         ]
-        if len(issuers) == 1:
-            entry.issuer_entry = issuers[0]
+        if len(bundle_issuers) == 1:
+            entry.issuer_entry = bundle_issuers[0]
             return
-        if len(issuers) > 1:
+        if len(bundle_issuers) > 1:
             entry.notes.append(
                 "Several certificates of the bundle can have issued this certificate: issuer left empty."
             )
             return
-        authorities = find_issuing_authorities(certificate, authority_certificates)
+        authorities = issuers.find_issuing_authorities(certificate, authority_certificates)
         if len(authorities) == 1:
             entry.issuer_authority = authorities[0]
         elif len(authorities) > 1:
