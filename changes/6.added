@@ -1,1 +1,0 @@
-Added the CA certificate of a Certificate Authority: optional link to its own Certificate, with consistency checks (basicConstraints, issuer), expiration on the CA views, `has_certificate` / `is_ca_certificate` filters and suggestions when importing a CA certificate from PEM.
