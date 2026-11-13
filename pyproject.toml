@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nautobot-ssl-manager"
-version = "1.1.0"
+version = "1.1.1a0"
 description = "Nautobot application for SSL/TLS certificate inventory, PKI management and DCV validation"
 authors = ["HyazOulephant <36076236+HyazOulephant@users.noreply.github.com>"]
 license = "Apache-2.0"
