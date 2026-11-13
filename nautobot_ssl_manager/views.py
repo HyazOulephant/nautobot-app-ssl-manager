@@ -4,12 +4,15 @@ from uuid import uuid4
 
 from django.contrib import messages
 from django.db.models import Q
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
+from django.utils.http import urlencode
 from nautobot.apps.ui import (
     BaseTextPanel,
+    Button,
+    DropdownButton,
     ObjectDetailContent,
     ObjectFieldsPanel,
     ObjectsTablePanel,
@@ -24,12 +27,17 @@ from nautobot.core.views.utils import get_obj_from_context
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from nautobot_ssl_manager import choices, filters, forms, models, tables
+from nautobot_ssl_manager import bundles, choices, downloads, filters, forms, issuers, models, tables, utils
 from nautobot_ssl_manager.api import serializers
 
 
 class CertificationChainPanel(Panel):
-    """Certification chain from the Root CA down to the displayed object (Certificate or Certificate Authority)."""
+    """Certification chain from the Root CA down to the displayed object (Certificate or Certificate Authority).
+
+    Each CA of the chain is displayed with its own CA certificate (or a warning when none is linked), so that the
+    chain of certificates is visible, not only the CA tree. A certificate that is the CA certificate of a CA is
+    displayed under that CA (it is not an extra level of the chain).
+    """
 
     body_content_template_path = "nautobot_ssl_manager/inc/certification_chain.html"
     label = "Certification chain"
@@ -37,22 +45,107 @@ class CertificationChainPanel(Panel):
     def get_extra_context(self, context):
         """Build the chain nodes, Root CA first."""
         obj = get_obj_from_context(context)
+        nodes = []
         if isinstance(obj, models.Certificate):
-            issuers = obj.chain
-            nodes = []
-            if issuers:
-                nodes = [self._ca_node(ca) for ca in reversed(issuers)]
+            authority = obj.ca_certificate_authority
+            if authority is not None:
+                nodes = [self._ca_node(ca, current_certificate=obj) for ca in reversed(authority.chain)]
+            elif obj.chain:
+                nodes = [self._ca_node(ca) for ca in reversed(obj.chain)]
                 nodes.append(
-                    {"object": obj, "role": "Certificate", "icon": "mdi-file-certificate-outline", "is_current": True}
+                    {
+                        "object": obj,
+                        "role": "Certificate",
+                        "icon": "mdi-file-certificate-outline",
+                        "is_current": True,
+                        "certificate": obj,
+                        "certificate_is_current": True,
+                        "is_leaf": True,
+                    }
                 )
         else:
             nodes = [self._ca_node(ca, is_current=ca.pk == obj.pk) for ca in reversed(obj.chain)]
         return {**super().get_extra_context(context), "chain_nodes": nodes}
 
     @staticmethod
-    def _ca_node(ca, is_current=False):
+    def _ca_node(ca, is_current=False, current_certificate=None):
         icon = "mdi-shield-lock-outline" if ca.chain_role == ca.ROLE_ROOT else "mdi-shield-check-outline"
-        return {"object": ca, "role": f"{ca.chain_role} CA", "icon": icon, "is_current": is_current}
+        is_ca_of_current = current_certificate is not None and ca.certificate_id == current_certificate.pk
+        return {
+            "object": ca,
+            "role": f"{ca.chain_role} CA",
+            "icon": icon,
+            "is_current": is_current or is_ca_of_current,
+            "certificate": ca.certificate,
+            "certificate_is_current": is_ca_of_current,
+            "is_leaf": False,
+        }
+
+
+class CertificateDownloadButton(Button):
+    """Entry of the Download menu: links to the download view, disabled (with the reason) when not available."""
+
+    def __init__(self, *, file_format, chain=False, include_root=False, **kwargs):
+        """Store the download parameters."""
+        self.file_format = file_format
+        self.chain = chain
+        self.include_root = include_root
+        super().__init__(link_name="plugins:nautobot_ssl_manager:certificate_download", **kwargs)
+
+    def get_link(self, context):
+        """Download URL with its query parameters."""
+        params = {"file_format": self.file_format}
+        if self.chain:
+            params["chain"] = "true"
+        if self.include_root:
+            params["include_root"] = "true"
+        return f"{super().get_link(context)}?{urlencode(params)}"
+
+    def get_extra_context(self, context):
+        """Disable the entry with the reason when the file cannot be built."""
+        extra_context = super().get_extra_context(context)
+        obj = get_obj_from_context(context, self.context_object_key)
+        if self.chain:
+            reason = downloads.chain_unavailable_reason(obj)
+        else:
+            reason = None if obj.pem else "No PEM is stored for this certificate."
+        if reason:
+            extra_context["attributes"] = {"disabled": "disabled", "aria-disabled": "true", "title": reason}
+        return extra_context
+
+
+def _download_buttons():
+    chain_permissions = [
+        "nautobot_ssl_manager.view_certificate",
+        "nautobot_ssl_manager.view_certificateauthority",
+    ]
+    return [
+        CertificateDownloadButton(label="Certificate (PEM)", file_format=downloads.FORMAT_PEM, weight=100),
+        CertificateDownloadButton(label="Certificate (DER)", file_format=downloads.FORMAT_DER, weight=200),
+        CertificateDownloadButton(
+            label="Certificate + chain (PEM)",
+            file_format=downloads.FORMAT_PEM,
+            chain=True,
+            required_permissions=chain_permissions,
+            weight=300,
+        ),
+        CertificateDownloadButton(
+            label="Certificate + chain + root (PEM)",
+            file_format=downloads.FORMAT_PEM,
+            chain=True,
+            include_root=True,
+            required_permissions=chain_permissions,
+            weight=400,
+        ),
+        CertificateDownloadButton(
+            label="Certificate + chain + root (PKCS#7)",
+            file_format=downloads.FORMAT_P7B,
+            chain=True,
+            include_root=True,
+            required_permissions=chain_permissions,
+            weight=500,
+        ),
+    ]
 
 
 class CertificateProviderUIViewSet(NautobotUIViewSet):
@@ -109,12 +202,19 @@ class CertificateAuthorityUIViewSet(NautobotUIViewSet):
                     "status",
                     "parent",
                     "chain_role",
+                    "certificate",
+                    "certificate__not_after",
+                    "certificate__days_remaining",
                     "provider",
                     "tenant",
                     "description",
                     "portal_url",
                 ],
-                key_transforms={"chain_role": "Role"},
+                key_transforms={
+                    "chain_role": "Role",
+                    "certificate__not_after": "CA certificate expires",
+                    "certificate__days_remaining": "Days remaining",
+                },
                 value_transforms={"portal_url": [helpers.hyperlinked_field]},
             ),
             CertificationChainPanel(
@@ -171,8 +271,15 @@ def _format_datetime_for_form(value):
     return timezone.localtime(value).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def build_initial_from_pem(parsed):
-    """Build the Certificate form initial data from a `ParsedCertificate` (only facts read from the PEM)."""
+ISSUER_SESSION_KEY = "_issuer"
+
+
+def build_initial_from_pem(parsed, identification=None):
+    """Build the Certificate form initial data from a `ParsedCertificate` (only facts read from the PEM).
+
+    The Certificate Authority is pre-selected only when it is proven by signature (`issuers.identify_issuer`); how it
+    was identified is stored under `ISSUER_SESSION_KEY` to explain it (or list suggestions) on the form.
+    """
     initial = {
         "name": parsed.common_name or (parsed.subject_alternative_names[0] if parsed.subject_alternative_names else ""),
         "common_name": parsed.common_name,
@@ -187,11 +294,12 @@ def build_initial_from_pem(parsed):
         "extended_key_usage": parsed.extended_key_usage,
         "pem": parsed.pem,
     }
-    # Only propose a Certificate Authority on an exact, unambiguous name match.
-    if parsed.issuer_common_name:
-        authorities = list(models.CertificateAuthority.objects.filter(name=parsed.issuer_common_name)[:2])
-        if len(authorities) == 1:
-            initial["certificate_authority"] = str(authorities[0].pk)
+    if identification is None:
+        identification = issuers.identify_issuer(parsed)
+    if identification.proven_authority is not None:
+        initial["certificate_authority"] = str(identification.proven_authority.pk)
+    if identification.method:
+        initial[ISSUER_SESSION_KEY] = identification.to_session()
     return {key: value for key, value in initial.items() if value not in (None, "", [])}
 
 
@@ -208,6 +316,46 @@ def get_replaces_suggestions(common_name, subject_alternative_names, exclude_fin
     if exclude_fingerprint:
         queryset = queryset.exclude(fingerprint_sha256=exclude_fingerprint)
     return list(queryset.order_by("-not_after")[:REPLACES_SUGGESTIONS_LIMIT])
+
+
+def get_missing_issuer_hint(parsed, identification):
+    """Hint displayed when the issuer of an imported certificate is not in Nautobot (link to create its CA).
+
+    The issuer is considered present when a stored CA certificate is proven to have issued the certificate, or when a
+    CA is named exactly like the issuer Common Name. The issuer Common Name is the only data available about it.
+    """
+    if parsed.is_self_signed or not parsed.issuer_common_name or identification.method:
+        return None
+    url = f"{reverse('plugins:nautobot_ssl_manager:certificateauthority_add')}?{urlencode({'name': parsed.issuer_common_name})}"
+    return format_html(
+        'The issuer of this certificate ({}) is not in Nautobot: <a href="{}">create its Certificate Authority</a> '
+        "first, or import the full chain (PEM bundle) to create it from its certificate.",
+        parsed.issuer_common_name,
+        url,
+    )
+
+
+def get_ca_certificate_hint(parsed, identification):
+    """Hint displayed when importing a CA certificate. The CA is only suggested, never linked automatically.
+
+    The issuer of the CA certificate tells the *Issued by* of the CA it belongs to: none for a self-signed certificate
+    (Root CA), the CA proven by signature otherwise.
+    """
+    hint = "This is a CA certificate: once saved, link it to its Certificate Authority (CA certificate field)."
+    if parsed.common_name:
+        authorities = list(
+            models.CertificateAuthority.objects.filter(name__iexact=parsed.common_name, certificate__isnull=True)[:2]
+        )
+        if len(authorities) == 1:
+            hint += f" Suggested Certificate Authority (same name as the Common Name): {authorities[0]}."
+    if parsed.is_self_signed:
+        hint += " It is self-signed: its Certificate Authority is a Root CA (no Issued by)."
+    elif identification.proven_authority is not None:
+        hint += (
+            f" Its issuer, proven by signature, is {identification.proven_authority}: "
+            "set it as Issued by of its Certificate Authority."
+        )
+    return hint
 
 
 class CertificateUIViewSet(NautobotUIViewSet):
@@ -232,12 +380,9 @@ class CertificateUIViewSet(NautobotUIViewSet):
                     "name",
                     "common_name",
                     "status",
-                    "certificate_authority",
-                    "certificate_authority__provider",
                     "tenant",
                     "description",
                 ],
-                key_transforms={"certificate_authority__provider": "Provider"},
             ),
             ObjectFieldsPanel(
                 weight=200,
@@ -296,7 +441,39 @@ class CertificateUIViewSet(NautobotUIViewSet):
                 render_as=BaseTextPanel.RenderOptions.CODE,
             ),
         ],
+        extra_buttons=[
+            DropdownButton(
+                label="Download",
+                icon="mdi-download",
+                weight=100,
+                required_permissions=["nautobot_ssl_manager.view_certificate"],
+                children=_download_buttons(),
+            ),
+        ],
     )
+
+    @action(
+        detail=True,
+        methods=["GET"],
+        url_path="download",
+        url_name="download",
+        custom_view_base_action="view",
+    )
+    def download(self, request, *args, **kwargs):
+        """Download the public certificate, optionally with its chain (see `downloads`)."""
+        certificate = self.get_object()
+        try:
+            download = downloads.build_download(
+                certificate,
+                file_format=request.GET.get("file_format"),
+                chain=downloads.parse_bool(request.GET.get("chain")),
+                include_root=downloads.parse_bool(request.GET.get("include_root")),
+                user=request.user,
+            )
+        except downloads.CertificateDownloadError as exc:
+            messages.error(request, f"Download failed: {exc}")
+            return redirect(certificate.get_absolute_url())
+        return downloads.download_response(download)
 
     def create(self, request, *args, **kwargs):
         """Pre-fill the creation form from a previously parsed PEM (see `import_pem`)."""
@@ -304,18 +481,32 @@ class CertificateUIViewSet(NautobotUIViewSet):
         if request.method == "GET" and token:
             initial = request.session.get(PEM_IMPORT_SESSION_KEY, {}).get(token)
             if initial:
+                initial = dict(initial)
+                issuer = initial.pop(ISSUER_SESSION_KEY, None)
                 suggestions = get_replaces_suggestions(
                     initial.get("common_name"),
                     initial.get("subject_alternative_names"),
                     exclude_fingerprint=initial.get("fingerprint_sha256"),
                 )
                 form = self.get_form_class()(
-                    instance=self.get_object(), initial=initial, replaces_suggestions=suggestions
+                    instance=self.get_object(),
+                    initial=initial,
+                    replaces_suggestions=suggestions,
+                    issuer_hint=self._issuer_hint(issuer, request.user),
                 )
                 restrict_form_fields(form, request.user)
                 return Response({"form": form})
             messages.warning(request, "The PEM import has expired, please import the certificate again.")
         return super().create(request, *args, **kwargs)
+
+    @staticmethod
+    def _issuer_hint(issuer, user):
+        """`(method, authorities visible to the user)` from the issuer identification stored with the PEM import."""
+        if not issuer or not issuer.get("method"):
+            return None
+        visible = models.CertificateAuthority.objects.restrict(user, "view").filter(pk__in=issuer["authorities"])
+        authorities = sorted(visible, key=lambda authority: issuer["authorities"].index(str(authority.pk)))
+        return (issuer["method"], authorities) if authorities else None
 
     @action(
         detail=False,
@@ -327,15 +518,70 @@ class CertificateUIViewSet(NautobotUIViewSet):
     def import_pem(self, request, *args, **kwargs):
         """Paste a PEM certificate, then continue on the pre-filled creation form."""
         form = forms.CertificateImportPEMForm(request.POST if request.method == "POST" else None)
+        if request.method == "POST" and form.is_valid() and form.bundle:
+            plan = bundles.BundlePlan(form.bundle, user=request.user)
+            review_form = forms.CertificateImportBundleForm(initial={"pem": form.cleaned_data["pem"]}, plan=plan)
+            return self._render_bundle_review(request, review_form)
         if request.method == "POST" and form.is_valid():
             parsed = form.parsed
             for warning in parsed.warnings:
                 messages.warning(request, warning)
+            identification = issuers.identify_issuer(parsed)
+            if parsed.is_ca:
+                messages.info(request, get_ca_certificate_hint(parsed, identification))
+            if hint := get_missing_issuer_hint(parsed, identification):
+                messages.info(request, hint)
             pending = request.session.get(PEM_IMPORT_SESSION_KEY, {})
             # Keep only the most recent imports to bound the session size.
             pending = dict(list(pending.items())[-(PEM_IMPORT_SESSION_MAX_ENTRIES - 1) :])
             token = uuid4().hex
-            pending[token] = build_initial_from_pem(parsed)
+            pending[token] = build_initial_from_pem(parsed, identification)
             request.session[PEM_IMPORT_SESSION_KEY] = pending
             return redirect(f"{reverse('plugins:nautobot_ssl_manager:certificate_add')}?pem_import={token}")
         return Response({"form": form})
+
+    @staticmethod
+    def _render_bundle_review(request, form):
+        """Render the review page of a PEM bundle."""
+        return render(
+            request,
+            "nautobot_ssl_manager/certificate_import_bundle.html",
+            {
+                "form": form,
+                "plan": form.plan,
+                "entries": [
+                    (entry, form.selected_field(entry), form.entry_fields(entry)) for entry in form.plan.entries
+                ],
+                "return_url": reverse("plugins:nautobot_ssl_manager:certificate_list"),
+            },
+        )
+
+    @action(
+        detail=False,
+        methods=["POST"],
+        url_path="import-bundle",
+        url_name="import_bundle",
+        custom_view_base_action="add",
+    )
+    def import_bundle(self, request, *args, **kwargs):
+        """Confirm the review of a PEM bundle: create the selected CAs and certificates in a single transaction."""
+        try:
+            plan = bundles.BundlePlan.from_pem(request.POST.get("pem", ""), user=request.user)
+        except utils.CertificateParseError as exc:
+            messages.error(request, f"Invalid PEM bundle: {exc}")
+            return redirect(reverse("plugins:nautobot_ssl_manager:certificate_import_pem"))
+        form = forms.CertificateImportBundleForm(request.POST, plan=plan)
+        if form.is_valid():
+            try:
+                changed = bundles.apply_plan(plan, form.selections, user=request.user)
+            except bundles.BundleImportError as exc:
+                form.add_error(None, f"Nothing was saved. {exc}")
+            else:
+                links = format_html_join(
+                    ", ", '<a href="{}">{}</a>', ((obj.get_absolute_url(), obj) for obj in changed)
+                )
+                messages.success(request, format_html("Bundle imported. Created or updated: {}", links))
+                certificates = [obj for obj in changed if isinstance(obj, models.Certificate)]
+                target = certificates[-1] if certificates else changed[-1]
+                return redirect(target.get_absolute_url())
+        return self._render_bundle_review(request, form)

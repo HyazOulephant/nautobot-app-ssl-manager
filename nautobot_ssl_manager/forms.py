@@ -21,10 +21,11 @@ from nautobot.apps.forms import (
     add_blank_choice,
 )
 from nautobot.core.forms.constants import BOOLEAN_WITH_BLANK_CHOICES
+from nautobot.extras.models import Status
 from nautobot.tenancy.forms import TenancyFilterForm, TenancyForm
 from nautobot.tenancy.models import Tenant
 
-from nautobot_ssl_manager import choices, models, utils
+from nautobot_ssl_manager import bundles, choices, issuers, models, utils
 
 #
 # Certificate Providers
@@ -82,6 +83,33 @@ class CertificateProviderFilterForm(NautobotFilterForm, TenancyFilterForm):  # p
 # Certificate Authorities
 #
 
+CA_CERTIFICATE_SUGGESTIONS_LIMIT = 5
+
+
+def get_parent_hint(authority):
+    """Issuer of a CA read from its CA certificate (self-signed, or proven by signature). Never selected automatically."""
+    if not authority.certificate_id or not authority.certificate.pem:
+        return ""
+    try:
+        parsed = utils.parse_pem_certificate(authority.certificate.pem)
+    except utils.CertificateParseError:
+        return ""
+    if parsed.is_self_signed:
+        return "Its CA certificate is self-signed: this is a Root CA, leave empty."
+    proven = [ca for ca in issuers.find_issuing_authorities(parsed.certificate) if ca.pk != authority.pk]
+    if not proven:
+        return ""
+    names = ", ".join(str(ca) for ca in proven)
+    return f"Suggestion, proven by the signature of its CA certificate: {names}."
+
+
+def get_ca_certificate_suggestions(name):
+    """Certificates not yet linked to a CA whose Common Name is the given CA name. Never selected automatically."""
+    if not name:
+        return []
+    queryset = models.Certificate.objects.filter(common_name__iexact=name, ca_certificate_of__isnull=True)
+    return list(queryset.order_by("-not_after")[:CA_CERTIFICATE_SUGGESTIONS_LIMIT])
+
 
 class CertificateAuthorityForm(NautobotModelForm, TenancyForm):  # pylint: disable=too-many-ancestors
     """CertificateAuthority creation/edit form."""
@@ -93,11 +121,19 @@ class CertificateAuthorityForm(NautobotModelForm, TenancyForm):  # pylint: disab
         help_text="CA that issued this CA's certificate. Leave empty for a Root CA.",
     )
     provider = DynamicModelChoiceField(queryset=models.CertificateProvider.objects.all(), required=False)
+    certificate = DynamicModelChoiceField(
+        queryset=models.Certificate.objects.all(),
+        required=False,
+        query_params={"is_ca_certificate": "False"},
+        label="CA certificate",
+        help_text="Certificate of this CA (its own certificate, not a certificate it issued)",
+    )
     comments = CommentField()
 
     field_order = [
         "name",
         "parent",
+        "certificate",
         "type",
         "status",
         "provider",
@@ -116,12 +152,27 @@ class CertificateAuthorityForm(NautobotModelForm, TenancyForm):  # pylint: disab
         fields = "__all__"
 
     def __init__(self, *args, **kwargs):
-        """A CA cannot be issued by itself or by one of the CAs it issued."""
+        """A CA cannot be issued by itself or by one of the CAs it issued.
+
+        Certificates whose Common Name matches the CA name are suggested for the CA certificate (never selected
+        automatically).
+        """
         super().__init__(*args, **kwargs)
         if self.instance.present_in_database:
             self.fields["parent"].queryset = models.CertificateAuthority.objects.exclude(
                 pk__in=self.instance.descendants(include_self=True).values("pk")
             )
+            if not self.instance.parent_id and (hint := get_parent_hint(self.instance)):
+                self.fields["parent"].help_text = f"{self.fields['parent'].help_text} {hint}"
+            if not self.instance.certificate_id:
+                suggestions = get_ca_certificate_suggestions(self.instance.name)
+                if suggestions:
+                    names = ", ".join(str(certificate) for certificate in suggestions)
+                    self.fields[
+                        "certificate"
+                    ].help_text = (
+                        f"{self.fields['certificate'].help_text}. Suggestions (same Common Name as the CA): {names}"
+                    )
 
 
 class CertificateAuthorityBulkEditForm(  # pylint: disable=too-many-ancestors
@@ -165,7 +216,18 @@ class CertificateAuthorityFilterForm(  # pylint: disable=too-many-ancestors
     """Filter form for CertificateAuthority."""
 
     model = models.CertificateAuthority
-    field_order = ["q", "name", "parent", "has_parent", "type", "status", "provider", "tenant_group", "tenant"]
+    field_order = [
+        "q",
+        "name",
+        "parent",
+        "has_parent",
+        "has_certificate",
+        "type",
+        "status",
+        "provider",
+        "tenant_group",
+        "tenant",
+    ]
 
     q = forms.CharField(required=False, label="Search")
     name = forms.CharField(required=False, label="Name")
@@ -178,6 +240,11 @@ class CertificateAuthorityFilterForm(  # pylint: disable=too-many-ancestors
     has_parent = forms.NullBooleanField(
         required=False,
         label="Intermediate CA",
+        widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES),
+    )
+    has_certificate = forms.NullBooleanField(
+        required=False,
+        label="Has CA certificate",
         widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES),
     )
     type = forms.MultipleChoiceField(
@@ -318,9 +385,26 @@ class CertificateForm(NautobotModelForm, TenancyForm):  # pylint: disable=too-ma
             "not_after": DateTimePicker(),
         }
 
-    def __init__(self, *args, replaces_suggestions=None, **kwargs):
-        """Optionally display suggested certificates for the `replaces` field (never selected automatically)."""
+    ISSUER_HINTS = {
+        issuers.METHOD_SIGNATURE: "Pre-selected: the signature of the certificate is verified with the CA certificate "
+        "of {names}.",
+        issuers.METHOD_AMBIGUOUS: "Several Certificate Authorities are proven by signature (e.g. cross-signing): "
+        "{names}. Choose the right one.",
+        issuers.METHOD_NAME: "Suggestion, not verified (same name as the issuer Common Name): {names}. Link its CA "
+        "certificate to verify the signature.",
+    }
+
+    def __init__(self, *args, replaces_suggestions=None, issuer_hint=None, **kwargs):
+        """Optionally display suggested certificates for `replaces` and how the issuing CA was identified.
+
+        `issuer_hint` is `(method, authorities)` (see `issuers.IssuerIdentification`). Suggestions are never selected
+        automatically: only a CA proven by signature is pre-selected (through the initial data).
+        """
         super().__init__(*args, **kwargs)
+        if issuer_hint:
+            method, authorities = issuer_hint
+            names = ", ".join(str(authority) for authority in authorities)
+            self.fields["certificate_authority"].help_text = self.ISSUER_HINTS[method].format(names=names)
         if self.instance.present_in_database:
             self.fields["replaces"].queryset = models.Certificate.objects.exclude(pk=self.instance.pk)
         if replaces_suggestions:
@@ -376,6 +460,7 @@ class CertificateFilterForm(  # pylint: disable=too-many-ancestors
         "san",
         "status",
         "certificate_authority",
+        "is_ca_certificate",
         "expired",
         "auto_renew",
         "validation_level",
@@ -393,6 +478,9 @@ class CertificateFilterForm(  # pylint: disable=too-many-ancestors
         to_field_name="name",
         required=False,
         label="Certificate Authority",
+    )
+    is_ca_certificate = forms.NullBooleanField(
+        required=False, widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES), label="CA certificate"
     )
     expired = forms.NullBooleanField(
         required=False, widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES), label="Expired"
@@ -431,13 +519,117 @@ class CertificateImportPEMForm(forms.Form):  # pylint: disable=nb-incorrect-base
     )
 
     def clean_pem(self):
-        """Parse the PEM and reject duplicates."""
+        """Parse the PEM: a single certificate (`parsed`) or a bundle of several certificates (`bundle`).
+
+        A single certificate already in Nautobot is rejected, as well as a bundle whose certificates all exist.
+        """
         try:
-            parsed = utils.parse_pem_certificate(self.cleaned_data["pem"])
+            bundle = utils.parse_pem_bundle(self.cleaned_data["pem"])
         except utils.CertificateParseError as exc:
             raise forms.ValidationError(str(exc)) from exc
-        existing = models.Certificate.objects.filter(fingerprint_sha256=parsed.fingerprint_sha256).first()
-        if existing:
-            raise forms.ValidationError(f"This certificate already exists in Nautobot: {existing}.")
-        self.parsed = parsed  # pylint: disable=attribute-defined-outside-init
-        return parsed.pem
+        fingerprints = [parsed.fingerprint_sha256 for parsed in bundle]
+        existing = list(models.Certificate.objects.filter(fingerprint_sha256__in=fingerprints))
+        if len(bundle) == 1:
+            if existing:
+                raise forms.ValidationError(f"This certificate already exists in Nautobot: {existing[0]}.")
+            self.parsed = bundle[0]  # pylint: disable=attribute-defined-outside-init
+            self.bundle = None  # pylint: disable=attribute-defined-outside-init
+            return bundle[0].pem
+        if len(existing) == len(bundle):
+            raise forms.ValidationError("All the certificates of this bundle already exist in Nautobot.")
+        self.parsed = None  # pylint: disable=attribute-defined-outside-init
+        self.bundle = bundle  # pylint: disable=attribute-defined-outside-init
+        return "".join(parsed.pem for parsed in bundle)
+
+
+class CertificateImportBundleForm(forms.Form):  # pylint: disable=nb-incorrect-base-class
+    """Review of a PEM bundle: one group of fields per certificate with an action to confirm.
+
+    Fields of an entry are prefixed with `entry<index>-`. The values that cannot be read from the certificates
+    (CA type, statuses, provider, tenant) are never pre-filled.
+    """
+
+    pem = forms.CharField(widget=forms.HiddenInput())
+
+    def __init__(self, *args, plan, **kwargs):
+        """Add the fields of each actionable entry of the `bundles.BundlePlan`."""
+        super().__init__(*args, **kwargs)
+        self.plan = plan
+        for entry in plan.actionable_entries:
+            self._add_entry_fields(entry)
+
+    def _add_entry_fields(self, entry):
+        prefix = entry.prefix
+        disabled = bool(entry.disabled_reason)
+        self.fields[f"{prefix}-selected"] = forms.BooleanField(
+            required=False, initial=not disabled, disabled=disabled, label=entry.action_label
+        )
+        if entry.action == bundles.ACTION_CREATE_CA:
+            self.fields[f"{prefix}-ca_name"] = forms.CharField(
+                required=False,
+                max_length=CHARFIELD_MAX_LENGTH,
+                initial=bundles.default_authority_name(entry.parsed),
+                label="CA name",
+            )
+            self.fields[f"{prefix}-ca_type"] = forms.ChoiceField(
+                required=False,
+                choices=add_blank_choice(choices.CertificateAuthorityTypeChoices),
+                widget=StaticSelect2(),
+                label="CA type",
+            )
+            self.fields[f"{prefix}-ca_status"] = forms.ModelChoiceField(
+                required=False,
+                queryset=Status.objects.get_for_model(models.CertificateAuthority),
+                widget=StaticSelect2(),
+                label="CA status",
+            )
+            self.fields[f"{prefix}-provider"] = DynamicModelChoiceField(
+                queryset=models.CertificateProvider.objects.all(), required=False, label="Provider"
+            )
+        if entry.creates_certificate:
+            self.fields[f"{prefix}-name"] = forms.CharField(
+                required=False,
+                max_length=CHARFIELD_MAX_LENGTH,
+                initial=bundles.default_certificate_name(entry.parsed),
+                label="Certificate name",
+            )
+            self.fields[f"{prefix}-status"] = forms.ModelChoiceField(
+                required=False,
+                queryset=Status.objects.get_for_model(models.Certificate),
+                widget=StaticSelect2(),
+                label="Certificate status",
+            )
+        if entry.action == bundles.ACTION_CREATE_CA or entry.creates_certificate:
+            self.fields[f"{prefix}-tenant"] = DynamicModelChoiceField(
+                queryset=Tenant.objects.all(), required=False, label="Tenant"
+            )
+
+    def selected_field(self, entry):
+        """Bound selection checkbox of an entry (None for an entry without action)."""
+        name = f"{entry.prefix}-selected"
+        return self[name] if name in self.fields else None
+
+    def entry_fields(self, entry):
+        """Bound fields of an entry (except the selection checkbox), for the template."""
+        return [
+            self[name] for name in self.fields if name.startswith(f"{entry.prefix}-") and not name.endswith("-selected")
+        ]
+
+    def clean(self):
+        """Require the values of the selected entries and build `selections` for `bundles.apply_plan`."""
+        cleaned_data = super().clean()
+        self.selections = {}  # pylint: disable=attribute-defined-outside-init
+        for entry in self.plan.actionable_entries:
+            prefix = entry.prefix
+            if entry.disabled_reason or not cleaned_data.get(f"{prefix}-selected"):
+                continue
+            values = {
+                name.split("-", 1)[1]: value for name, value in cleaned_data.items() if name.startswith(f"{prefix}-")
+            }
+            for name in values:
+                if name not in ("selected", "provider", "tenant") and values[name] in (None, ""):
+                    self.add_error(f"{prefix}-{name}", "This field is required for the selected action.")
+            self.selections[entry.index] = values
+        if not self.selections and not self.errors:
+            raise forms.ValidationError("Select at least one action.")
+        return cleaned_data

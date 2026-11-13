@@ -8,7 +8,7 @@ Private keys are rejected at model validation (UI and REST API). Nautobot is not
 
 ## Nothing is guessed
 
-Fields that cannot be read reliably from the certificate are left empty rather than inferred: `auto_renew` is a nullable boolean (unknown by default), the validation level is filled from the PEM only when a CA/Browser Forum policy OID is present, the CA only when a CA named exactly like the issuer Common Name exists, and the replaced certificate is only suggested, never selected.
+Fields that cannot be read reliably from the certificate are left empty rather than inferred: `auto_renew` is a nullable boolean (unknown by default), the validation level is filled from the PEM only when a CA/Browser Forum policy OID is present, the CA only when it is proven by signature verification with a stored CA certificate (a CA with the same name as the issuer is only suggested), and the replaced certificate is only suggested, never selected.
 
 ## Expiration is computed, not a status
 

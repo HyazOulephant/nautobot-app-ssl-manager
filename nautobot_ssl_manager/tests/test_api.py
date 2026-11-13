@@ -1,6 +1,6 @@
 """API tests for nautobot_ssl_manager."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from nautobot.apps.testing import APIViewTestCases
 
@@ -46,6 +46,14 @@ class CertificateAuthorityAPIViewTest(APIViewTestCases.APIViewTestCase):
         active, deprecated, _ = fixtures.get_certificate_authority_statuses()
         provider = models.CertificateProvider.objects.get(name="Sectigo")
         tenant = fixtures.create_tenants()[0]
+        lab_root = models.CertificateAuthority.objects.get(name="Lab Root CA")
+        ca_certificate = models.Certificate.objects.create(
+            name="API CA Three certificate",
+            common_name="API CA Three",
+            certificate_authority=lab_root,
+            not_after=datetime.now(timezone.utc) + timedelta(days=3650),
+            status=fixtures.get_certificate_statuses()[1],
+        )
         cls.create_data = [
             {
                 "name": "API CA One",
@@ -64,7 +72,8 @@ class CertificateAuthorityAPIViewTest(APIViewTestCases.APIViewTestCase):
                 "type": CertificateAuthorityTypeChoices.TYPE_PRIVATE,
                 "status": active.pk,
                 "portal_url": "https://three.example.com",
-                "parent": models.CertificateAuthority.objects.get(name="Lab Root CA").pk,
+                "parent": lab_root.pk,
+                "certificate": ca_certificate.pk,
             },
         ]
         cls.update_data = {"name": "API CA Updated", "status": deprecated.pk}

@@ -148,10 +148,11 @@ class CertificateImportPEMViewTest(TestCase):
         # Suggestions are displayed but never selected automatically.
         self.assertIn("Suggestions (same CN or shared SANs)", content)
         self.assertIn("www.example.com 2026", content)
-        # The CA is pre-selected in the rendered form (the option tag spans several lines).
-        self.assertRegex(content, rf'<option value="{authority.pk}"\s+selected\s*>')
+        # Same name only (no CA certificate to verify the signature): suggested, not pre-selected.
+        self.assertNotRegex(content, rf'<option value="{authority.pk}"\s+selected\s*>')
         form = response.context["form"]
-        self.assertEqual(form.initial["certificate_authority"], str(authority.pk))
+        self.assertIsNone(form.initial.get("certificate_authority"))
+        self.assertIn("Suggestion, not verified (same name as the issuer Common Name): Lab Root CA", content)
         self.assertIsNone(form.initial.get("replaces"))
         self.assertEqual(form.initial["validation_level"], "ov")
 
@@ -212,6 +213,30 @@ class CertificationChainViewTest(TestCase):
         if certificate is None:
             self.skipTest("No certificate without CA in fixtures")
         self.assertIn("No Certificate Authority set.", self._panel(certificate.get_absolute_url()))
+
+    def _chain(self, url):
+        """HTML of the chain list only."""
+        content = self._panel(url)
+        start = content.index('id="certification-chain"')
+        return content[start : content.index("</ul>", start)]
+
+    def test_ca_certificates_in_the_chain(self):
+        ca_certificate = fixtures.create_ca_certificate()
+        chain = self._chain(models.Certificate.objects.get(name="vpn-client-01").get_absolute_url())
+        # Lab Root CA has a CA certificate, Internal Issuing CA has none.
+        self.assertIn(ca_certificate.get_absolute_url(), chain)
+        self.assertIn("No CA certificate linked", chain)
+        self.assertEqual(chain.count("<li"), 3)
+
+    def test_ca_certificate_is_displayed_under_its_ca(self):
+        ca_certificate = fixtures.create_ca_certificate()
+        chain = self._chain(ca_certificate.get_absolute_url())
+        root = models.CertificateAuthority.objects.get(name="Lab Root CA")
+        # One level only (the Root CA), its certificate being the displayed one: no duplicated node.
+        self.assertEqual(chain.count("<li"), 1)
+        self.assertIn(root.get_absolute_url(), chain)
+        self.assertIn("(this certificate)", chain)
+        self.assertNotIn(">Certificate</span>", chain)
 
     def test_certificate_authority_chain_and_issued_cas(self):
         root = models.CertificateAuthority.objects.get(name="Lab Root CA")

@@ -1,6 +1,6 @@
 """Models for Nautobot SSL Manager."""
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 from django.utils import timezone
 from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
@@ -101,6 +101,15 @@ class CertificateAuthority(TreeModel, PrimaryModel):  # pylint: disable=too-many
         null=True,
     )
     comments = models.TextField(blank=True)
+    certificate = models.OneToOneField(
+        to="nautobot_ssl_manager.Certificate",
+        on_delete=models.SET_NULL,
+        related_name="ca_certificate_of",
+        blank=True,
+        null=True,
+        verbose_name="CA certificate",
+        help_text="Certificate of this CA (its own certificate, not a certificate it issued)",
+    )
 
     clone_fields = ["parent", "type", "status", "provider", "tenant"]
 
@@ -124,6 +133,63 @@ class CertificateAuthority(TreeModel, PrimaryModel):  # pylint: disable=too-many
     def chain(self):
         """This CA followed by its issuers, up to the Root CA."""
         return list(self.ancestors(include_self=True))[::-1]
+
+    def clean(self):
+        """Validate the consistency of the CA certificate with this CA."""
+        super().clean()
+        if self.certificate_id:
+            messages = [message for _, message in ca_certificate_inconsistencies(self, self.certificate)]
+            if messages:
+                raise ValidationError({"certificate": messages})
+
+
+def _parse_stored_pem(certificate):
+    """Parse the PEM stored on a Certificate, or None if absent or invalid (reported by `Certificate.clean()`)."""
+    if certificate is None or not certificate.pem:
+        return None
+    try:
+        return utils.parse_pem_certificate(certificate.pem)
+    except utils.CertificateParseError:
+        return None
+
+
+def ca_certificate_inconsistencies(authority, certificate):
+    """Return the facts proving that `certificate` cannot be the certificate of `authority`.
+
+    Only certain facts are checked (data stored in Nautobot or read from the PEMs); nothing is guessed.
+    Each entry is `(kind, message)`, `kind` being "pem" (content of the certificate itself) or
+    "issuer" (consistency with the CA tree).
+    """
+    errors = []
+    parsed = _parse_stored_pem(certificate)
+    if parsed is not None and not parsed.is_ca:
+        errors.append(("pem", "This certificate is not a CA certificate (basicConstraints CA:TRUE is missing)."))
+
+    # The CA certificate is issued by the parent CA, or by the CA itself (self-signed Root CA).
+    if certificate.certificate_authority_id:
+        expected_issuer_id = authority.parent_id or authority.pk
+        if certificate.certificate_authority_id != expected_issuer_id:
+            expected = authority.parent if authority.parent_id else "the CA itself (Root CA)"
+            errors.append(
+                (
+                    "issuer",
+                    f"The certificate is issued by {certificate.certificate_authority}, "
+                    f"but the CA is issued by {expected}.",
+                )
+            )
+
+    # When both PEMs are known, the certificate issuer must be the subject of the parent CA certificate.
+    if parsed is not None and authority.parent_id:
+        parent_parsed = _parse_stored_pem(authority.parent.certificate)
+        if parent_parsed is not None and parsed.issuer_dn != parent_parsed.subject_dn:
+            errors.append(
+                (
+                    "issuer",
+                    f"The certificate issuer ({parsed.issuer_dn}) does not match the subject of the certificate "
+                    f"of {authority.parent} ({parent_parsed.subject_dn}).",
+                )
+            )
+    return errors
 
 
 @extras_features(
@@ -238,6 +304,16 @@ class Certificate(PrimaryModel):  # pylint: disable=too-many-ancestors
         return self.certificate_authority.chain
 
     @property
+    def ca_certificate_authority(self):
+        """Certificate Authority whose own certificate is this one (None for a certificate not linked to a CA)."""
+        if not self.present_in_database:
+            return None
+        try:
+            return self.ca_certificate_of  # pylint: disable=no-member
+        except ObjectDoesNotExist:
+            return None
+
+    @property
     def is_wildcard(self):
         """True if at least one SAN (or the CN) is a wildcard DNS name."""
         names = [self.common_name, *(self.subject_alternative_names or [])]
@@ -326,6 +402,10 @@ class Certificate(PrimaryModel):  # pylint: disable=too-many-ancestors
         if self.replaces_id and self.pk and self.replaces_id == self.pk:
             errors["replaces"] = "A certificate cannot replace itself."
         self._validate_pem(errors)
+        if "pem" not in errors and (authority := self.ca_certificate_authority) is not None:
+            fields = {"pem": "pem", "issuer": "certificate_authority"}
+            for kind, message in ca_certificate_inconsistencies(authority, self):
+                errors.setdefault(fields[kind], []).append(message)
         if errors:
             raise ValidationError(errors)
 

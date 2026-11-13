@@ -86,6 +86,11 @@ class CertificateAuthorityTable(StatusTableMixin, BaseTable):
         url_params={"certificate_authority": "pk"},
         verbose_name="Certificates",
     )
+    certificate = tables.Column(linkify=True, verbose_name="CA certificate")
+    certificate_expires = tables.DateTimeColumn(
+        accessor="certificate__not_after",
+        verbose_name="CA certificate expires",
+    )
     tags = TagColumn(url_name="plugins:nautobot_ssl_manager:certificateauthority_list")
     actions = ButtonsColumn(models.CertificateAuthority)
 
@@ -103,6 +108,8 @@ class CertificateAuthorityTable(StatusTableMixin, BaseTable):
             "provider",
             "tenant",
             "certificate_count",
+            "certificate",
+            "certificate_expires",
             "description",
             "portal_url",
             "tags",
