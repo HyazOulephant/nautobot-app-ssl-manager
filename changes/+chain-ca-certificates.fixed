@@ -1,1 +1,0 @@
-Certification chain panel: each CA is displayed with its CA certificate (status, expiration) or a warning when none is linked, and a CA certificate is displayed under its own CA instead of being duplicated as an extra level. The redundant Certificate Authority, Provider and CA certificate of rows are removed from the Certificate detail panel.
