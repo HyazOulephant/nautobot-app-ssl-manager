@@ -18,7 +18,7 @@ Once installed, the app adds an **SSL Manager** tab to the navigation menu. The 
     - or with the standard **Add** form, or a CSV import.
 
 !!! tip
-    The import from PEM links the certificate to its CA only if a Certificate Authority named exactly like the issuer Common Name of the certificate exists. Naming your CAs after their Common Name lets the import fill this field for you.
+    The import from PEM pre-selects the Certificate Authority of a certificate only when it is proven by signature, which requires the CA certificate (with its PEM) to be linked to the CA. Import and link the CA certificates first, or import the full chain (PEM bundle), and the CA of the next certificates will be found whatever the CA name.
 
 ## What are the next steps?
 
