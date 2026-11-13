@@ -1,0 +1,1 @@
+The PEM import identifies the issuing Certificate Authority by signature verification with the stored CA certificates (key identifiers pre-selection): it is pre-selected only when exactly one CA is proven. A CA named like the issuer Common Name is now only an unverified suggestion. The CA edit form suggests the Issued by read from the CA certificate.
