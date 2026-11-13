@@ -4,10 +4,11 @@ This document describes all new features and changes in the release. The format 
 
 ## Release Overview
 
-- Major features or milestones
-- Changes to compatibility with Nautobot and/or other apps, libraries etc.
-
-<!-- towncrier release notes start -->
+- CA certificates: a Certificate Authority can be linked to its own certificate, with consistency checks, expiration displayed on the CA views and in the certification chain.
+- Downloads: certificate alone (PEM, DER) or with its chain (PEM bundle with or without the Root CA, PKCS#7), from the UI and the REST API.
+- PEM bundle import: paste a full chain, review it, and create the missing Certificate Authorities and certificates in a single step.
+- Issuing CA identified by signature verification instead of the CA name; a CA with the same name as the issuer is now only a suggestion.
+- Compatible with Nautobot 3.1.0 and higher (3.x).
 
 ## [v1.1.0 (2026-11-13)](https://github.com/HyazOulephant/nautobot-app-ssl-manager/releases/tag/v1.1.0)
 
