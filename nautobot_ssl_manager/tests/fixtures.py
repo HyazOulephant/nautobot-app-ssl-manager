@@ -251,10 +251,12 @@ def create_domain_validation_records():
         description="Value changes at each issuance",
     )
     edge_txt.certificates.set([edge])
+    # Zone apex (empty name) in another zone: generic Nautobot view tests (bulk rename on Nautobot < 3.2) use the
+    # first record of the list and need a non-empty name.
     apex_txt = DomainValidationRecord.objects.create(
         record_type=DNSRecordTypeChoices.TXT,
         name="",
-        zone_name="example.com",
+        zone_name="example.org",
         text="dv-token-123",
         ttl=3600,
         comment="Sectigo DCV token",

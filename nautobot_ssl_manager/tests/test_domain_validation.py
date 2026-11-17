@@ -140,7 +140,7 @@ class DomainValidationRecordFilterTest(TestCase):
     def test_fqdn(self):
         """Exact FQDN, whatever the split between the name and the zone."""
         self.assertEqual(self.filter({"fqdn": "_ACME-challenge.edge.example.com."}).get().name, "_acme-challenge.edge")
-        self.assertEqual(self.filter({"fqdn": "example.com"}).get().name, "")
+        self.assertEqual(self.filter({"fqdn": "Example.ORG"}).get().name, "")
         self.assertEqual(self.filter({"fqdn": "unknown.example.com"}).count(), 0)
         self.assertEqual(self.filter({"fqdn": "a..b"}).count(), 0)
 
@@ -238,7 +238,8 @@ class WithDNSModelsTest(TestCase):
         # Fully qualified name in DNS Models, any text (the record has none).
         txt_model.objects.create(name="_acme-challenge.edge.example.com", zone=cls.zone, text="random")
         # Apex TXT with another value.
-        txt_model.objects.create(name="", zone=cls.zone, text="other-token")
+        apex_zone = dns_zone_model.objects.create(name="example.org", filename="example.org.zone")
+        txt_model.objects.create(name="", zone=apex_zone, text="other-token")
         cls.records = {
             name: models.DomainValidationRecord.objects.get(name=name)
             for name in ("_acme-challenge", "_acme-challenge.edge", "", "_acme-challenge.api")
