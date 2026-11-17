@@ -105,6 +105,26 @@ class DomainValidationRecordModelTest(TestCase):
             build_record(text="token").save()
         build_record(text="other").validated_save()
 
+    def test_unique_from_form(self):
+        """A duplicate is reported by the form (the hash used by the constraint is not a form field)."""
+        build_record(text="token").validated_save()
+        data = {"record_type": "TXT", "name": "_acme-challenge", "zone_name": "example.org", "text": "token"}
+        form = forms.DomainValidationRecordForm(data=data)
+        self.assertFalse(form.is_valid())
+        self.assertIn("already exists", str(form.errors))
+        data["text"] = "other"
+        self.assertTrue(forms.DomainValidationRecordForm(data=data).is_valid())
+
+    def test_value_hash(self):
+        """The hash covers the text and the alias, and is refreshed on save."""
+        record = build_record(text="token")
+        record.validated_save()
+        self.assertEqual(record._value_hash, models.DomainValidationRecord.hash_value("token", ""))  # pylint: disable=protected-access
+        record.text = "other"
+        record.save()
+        record.refresh_from_db()
+        self.assertEqual(record._value_hash, models.DomainValidationRecord.hash_value("other", ""))  # pylint: disable=protected-access
+
     def test_certificates(self):
         """A record can be linked to several certificates, and a certificate to several records."""
         fixtures.create_domain_validation_records()

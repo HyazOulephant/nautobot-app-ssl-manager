@@ -189,3 +189,4 @@ class DomainValidationRecordAPIViewTest(APIViewTestCases.APIViewTestCase):
         self.assertHttpStatus(response, 200)
         self.assertEqual(response.data["fqdn"], "_acme-challenge.example.com")
         self.assertIn("dns_models_match", response.data)
+        self.assertNotIn("_value_hash", response.data)

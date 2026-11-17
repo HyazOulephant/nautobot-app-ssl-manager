@@ -1,5 +1,7 @@
 """Models for Nautobot SSL Manager."""
 
+import hashlib
+
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MaxValueValidator
 from django.db import models
@@ -489,6 +491,12 @@ class DomainValidationRecord(PrimaryModel):  # pylint: disable=too-many-ancestor
     )
     description = models.TextField(blank=True)
     comment = models.CharField(max_length=DNS_NAME_MAX_LENGTH, blank=True)
+    # SHA-256 digest of `text` and `alias` for the unique constraint: with them, the index would exceed the maximum key
+    # length of MySQL (3072 bytes). Same approach as `TXTRecord._text_hash` in Nautobot DNS Models 3.0; the leading
+    # underscore keeps it out of the REST API.
+    _value_hash = models.CharField(
+        max_length=64, editable=False, help_text="SHA-256 digest of the text and alias, used to enforce uniqueness."
+    )
 
     clone_fields = ["record_type", "zone_name", "tenant"]
 
@@ -503,8 +511,10 @@ class DomainValidationRecord(PrimaryModel):  # pylint: disable=too-many-ancestor
         verbose_name_plural = "Domain Validation Records"
         constraints = [
             models.UniqueConstraint(
-                fields=["record_type", "name", "zone_name", "text", "alias"],
+                fields=["record_type", "name", "zone_name", "_value_hash"],
                 name="nautobot_ssl_manager_domainvalidationrecord_unique",
+                violation_error_message="A Domain Validation Record with the same type, name, zone and value "
+                "already exists.",
             ),
         ]
 
@@ -535,6 +545,18 @@ class DomainValidationRecord(PrimaryModel):  # pylint: disable=too-many-ancestor
         self.name = name.rstrip(".")
         self.alias = str(self.alias or "").strip().rstrip(".")
         self.text = str(self.text or "").strip()
+        self._value_hash = self.hash_value(self.text, self.alias)
+
+    @staticmethod
+    def hash_value(text, alias):
+        """SHA-256 digest of the text and alias, used to enforce uniqueness."""
+        return hashlib.sha256(f"{text or ''}\0{alias or ''}".encode("utf-8")).hexdigest()
+
+    def validate_constraints(self, exclude=None):
+        """Always validate the unique constraint: `_value_hash` is computed, so it is never a form field."""
+        if exclude:
+            exclude = set(exclude) - {"_value_hash"}
+        super().validate_constraints(exclude=exclude)
 
     def clean_fields(self, exclude=None):
         """Normalize values before Django's field validation."""
