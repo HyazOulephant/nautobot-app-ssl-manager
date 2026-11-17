@@ -7,11 +7,12 @@ This document provides an overview of the App including critical information and
 
 ## Description
 
-Nautobot SSL Manager adds an inventory of SSL/TLS certificates to Nautobot. It provides three data models:
+Nautobot SSL Manager adds an inventory of SSL/TLS certificates to Nautobot. It provides four data models:
 
 - [Certificate Provider](../models/certificateprovider.md): the vendor or service through which certificates are obtained (a commercial vendor, Let's Encrypt, an internal PKI team...).
 - [Certificate Authority](../models/certificateauthority.md): the CA issuing certificates, organized as a tree of Root and Intermediate CAs.
-- [Certificate](../models/certificate.md): an SSL/TLS certificate (public part only), with its identity (CN, SANs, serial number, fingerprint), its validity, its technical characteristics, its issuing CA and its renewal history.
+- [Certificate](../models/certificate.md): an SSL/TLS certificate (public part only), with its identity (CN, SANs, serial number, fingerprint), its validity, its technical characteristics, its issuing CA, its renewal history and its Domain Control Validation (DCV) method.
+- [Domain Validation Record](../models/domainvalidationrecord.md): a DNS record (TXT or CNAME) used to validate the domains of certificates, such as an `_acme-challenge` delegation, optionally compared with [Nautobot DNS Models](https://github.com/nautobot/nautobot-app-dns-models).
 
 The app adds an **SSL Manager** tab to the navigation menu:
 
@@ -20,6 +21,14 @@ The app adds an **SSL Manager** tab to the navigation menu:
 Detail view of a certificate, with its validity, its technical details and its certification chain:
 
 ![Certificate detail view](../images/certificate.png)
+
+The public certificate can be downloaded alone or with its chain, in PEM, DER or PKCS#7 format:
+
+![Download menu of a certificate](../images/download_pem.png)
+
+Detail view of a Domain Validation Record, with its certificates and its comparison with Nautobot DNS Models (here, a CNAME delegation whose alias differs in DNS Models):
+
+![Domain Validation Record detail view](../images/dcv.png)
 
 The app follows a "nothing is guessed" principle: data is either entered by the user or read from the certificate itself, never inferred (for example, `auto_renew` stays unknown until set, and the import from PEM never selects the certificate to replace on its own).
 
@@ -38,7 +47,7 @@ The app follows a "nothing is guessed" principle: data is either entered by the 
 
 ## Nautobot Features Used
 
-- **Navigation**: a dedicated **SSL Manager** menu tab with *Certificates* (including an *Import from PEM* button), *Certificate Authorities* and *Providers*.
+- **Navigation**: a dedicated **SSL Manager** menu tab with *Certificates* (including an *Import from PEM* button), *Certificate Authorities*, *Providers* and, in the *Domain Validation* group, *DNS Validation Records*.
 - **Data models** with the standard Nautobot features: list, detail, create/edit, bulk edit, bulk delete, CSV import/export, change logging, tags, notes, contacts/teams, custom fields, relationships, global search.
 - **Tenancy**: each model can be assigned to a Tenant.
 - **Tree model**: Certificate Authorities use Nautobot's tree support (`parent`), with a tree list view.

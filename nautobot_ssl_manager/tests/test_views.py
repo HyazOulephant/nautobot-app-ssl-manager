@@ -258,3 +258,35 @@ class RenderListTest(TestCase):
     def test_entries_are_escaped(self):
         """Entries are HTML-escaped."""
         self.assertIn("&lt;script&gt;", views.render_list(["<script>"]))
+
+
+class DomainValidationRecordViewTest(ViewTestCases.PrimaryObjectViewTestCase):
+    # pylint: disable=too-many-ancestors
+    """Test the DomainValidationRecord views."""
+
+    model = models.DomainValidationRecord
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data."""
+        fixtures.create_domain_validation_records()
+        tenant = fixtures.create_tenants()[0]
+        certificate = models.Certificate.objects.get(name="www.example.com 2026")
+        cls.form_data = {
+            "record_type": "CNAME",
+            "name": "_acme-challenge.shop",
+            "zone_name": "example.com",
+            "alias": "shop.acme-dns.example.net",
+            "ttl": 600,
+            "certificates": [certificate.pk],
+            "tenant": tenant.pk,
+            "description": "Created from view test",
+            "comment": "View comment",
+        }
+        cls.update_data = {
+            "record_type": "TXT",
+            "name": "_validation",
+            "zone_name": "example.org",
+            "text": "updated-token",
+        }
+        cls.bulk_edit_data = {"description": "Bulk edit views", "ttl": 120}

@@ -57,6 +57,27 @@ def is_valid_dns_name(value):
     return all(_DNS_LABEL_RE.match(label) for label in labels)
 
 
+def normalize_dns_record_name(value):
+    """Normalize a DNS name of a record or zone (lowercase, without spaces nor trailing dot).
+
+    Same tolerance as Nautobot DNS Models: underscores are allowed (e.g. `_acme-challenge`), only empty labels and
+    labels longer than 63 characters are rejected. Raises ValueError.
+    """
+    value = str(value or "").strip().lower().rstrip(".")
+    if not value:
+        return ""
+    if len(value) > 253:
+        raise ValueError("A DNS name cannot exceed 253 characters.")
+    for label in value.split("."):
+        if not label:
+            raise ValueError("Empty labels are not allowed.")
+        if len(label) > 63:
+            raise ValueError(f"Label '{label}' exceeds the maximum length of 63 characters.")
+        if any(char.isspace() for char in label):
+            raise ValueError(f"Label '{label}' contains spaces.")
+    return value
+
+
 def normalize_san(value):
     """Normalize a single Subject Alternative Name entry. Returns the normalized value or raises ValueError."""
     value = str(value).strip()

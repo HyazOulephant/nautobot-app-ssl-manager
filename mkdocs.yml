@@ -116,6 +116,7 @@ nav:
           - Certificate: "models/certificate.md"
           - Certificate Authority: "models/certificateauthority.md"
           - Certificate Provider: "models/certificateprovider.md"
+          - Domain Validation Record: "models/domainvalidationrecord.md"
   - Administrator Guide:
       - Install and Configure: "admin/install.md"
       - Upgrade: "admin/upgrade.md"
@@ -123,6 +124,7 @@ nav:
       - Compatibility Matrix: "admin/compatibility_matrix.md"
       - Release Notes:
           - "admin/release_notes/index.md"
+          - v1.2: "admin/release_notes/version_1.2.md"
           - v1.1: "admin/release_notes/version_1.1.md"
           - v1.0: "admin/release_notes/version_1.0.md"
   - Developer Guide:

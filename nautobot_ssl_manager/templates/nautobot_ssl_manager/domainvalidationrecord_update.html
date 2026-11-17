@@ -1,0 +1,32 @@
+{% extends "generic/object_create.html" %}
+{% load form_helpers %}
+
+{% block form %}
+    <div class="card">
+        <div class="card-header"><strong>DNS record</strong></div>
+        <div class="card-body">
+            {% render_field form.record_type %}
+            {% render_field form.name %}
+            {% render_field form.zone_name %}
+            {% render_field form.text %}
+            {% render_field form.alias %}
+            {% render_field form.ttl %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><strong>Certificates</strong></div>
+        <div class="card-body">
+            {% render_field form.certificates %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><strong>Details</strong></div>
+        <div class="card-body">
+            {% render_field form.description %}
+            {% render_field form.comment %}
+            {% render_field form.tenant_group %}
+            {% render_field form.tenant %}
+        </div>
+    </div>
+    {% include "inc/extras_features_edit_form_fields.html" %}
+{% endblock form %}

@@ -77,3 +77,51 @@ class ExtendedKeyUsageChoices(ChoiceSet):
         "1.3.6.1.5.5.7.3.8": TIME_STAMPING,
         "1.3.6.1.5.5.7.3.9": OCSP_SIGNING,
     }
+
+
+class DomainValidationMethodChoices(ChoiceSet):
+    """Domain Control Validation (DCV) method used for the issuance of a certificate."""
+
+    DNS_TXT = "dns-txt"
+    DNS_CNAME = "dns-cname"
+    HTTP = "http"
+    EMAIL = "email"
+    ACME_DNS_01 = "acme-dns-01"
+    ACME_HTTP_01 = "acme-http-01"
+    ACME_TLS_ALPN_01 = "acme-tls-alpn-01"
+
+    CHOICES = (
+        (DNS_TXT, "DNS (TXT record)"),
+        (DNS_CNAME, "DNS (CNAME record)"),
+        (HTTP, "HTTP (file on the web server)"),
+        (EMAIL, "Email"),
+        (ACME_DNS_01, "ACME dns-01"),
+        (ACME_HTTP_01, "ACME http-01"),
+        (ACME_TLS_ALPN_01, "ACME tls-alpn-01"),
+    )
+
+
+class DNSRecordTypeChoices(ChoiceSet):
+    """Type of a DNS record used for domain validation (same record types as Nautobot DNS Models)."""
+
+    TXT = "TXT"
+    CNAME = "CNAME"
+
+    CHOICES = (
+        (TXT, "TXT"),
+        (CNAME, "CNAME"),
+    )
+
+
+class DNSModelsMatchChoices(ChoiceSet):
+    """Comparison of a Domain Validation Record with the records of Nautobot DNS Models (computed, never stored)."""
+
+    PRESENT = "present"
+    DIFFERENT = "different"
+    ABSENT = "absent"
+
+    CHOICES = (
+        (PRESENT, "Present"),
+        (DIFFERENT, "Different"),
+        (ABSENT, "Absent"),
+    )

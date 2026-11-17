@@ -13,6 +13,7 @@ router = NautobotUIViewSetRouter()
 router.register("certificates", views.CertificateUIViewSet)
 router.register("certificate-providers", views.CertificateProviderUIViewSet)
 router.register("certificate-authorities", views.CertificateAuthorityUIViewSet)
+router.register("domain-validation-records", views.DomainValidationRecordUIViewSet)
 
 
 urlpatterns = [

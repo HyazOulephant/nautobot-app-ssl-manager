@@ -1,0 +1,27 @@
+{% load helpers %}
+<div class="mb-8">{{ state_badge }}
+    {% if comparison.state == "present" %}
+        <span class="text-secondary">A record with the same type, name, zone and value exists.</span>
+    {% elif comparison.state == "different" %}
+        <span class="text-secondary">Records with the same type, name and zone exist, with another value.</span>
+    {% else %}
+        <span class="text-secondary">No record with the same type, name and zone.</span>
+    {% endif %}
+</div>
+{% if comparison.matches %}
+    <ul class="list-unstyled mb-0">
+        {% for record, same_value in comparison.matches %}
+            <li>
+                <span class="mdi {% if same_value %}mdi-check-circle text-success{% else %}mdi-alert text-warning{% endif %}" aria-hidden="true"></span>
+                <a href="{{ record.get_absolute_url }}">{{ record.name|default:"@" }}</a>
+                <span class="text-secondary">in zone</span> {{ record.zone|hyperlinked_object }}
+                {% if record.alias %}&rarr; <code>{{ record.alias }}</code>{% elif record.text %}<code>{{ record.text }}</code>{% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+{% endif %}
+{% if create_url %}
+    <a href="{{ create_url }}" class="btn btn-sm btn-primary mt-8">
+        <span class="mdi mdi-plus-thick" aria-hidden="true"></span> Create in Nautobot DNS Models
+    </a>
+{% endif %}
