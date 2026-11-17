@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from nautobot_ssl_manager import downloads, filters, models
+from nautobot_ssl_manager import dns_models, downloads, filters, models
 from nautobot_ssl_manager.api import serializers
 
 
@@ -85,3 +85,15 @@ class CertificateViewSet(NautobotModelViewSet):  # pylint: disable=too-many-ance
         except downloads.CertificateDownloadError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return downloads.download_response(download)
+
+
+class DomainValidationRecordViewSet(NautobotModelViewSet):  # pylint: disable=too-many-ancestors
+    """DomainValidationRecord viewset."""
+
+    queryset = models.DomainValidationRecord.objects.prefetch_related("certificates")
+    serializer_class = serializers.DomainValidationRecordSerializer
+    filterset_class = filters.DomainValidationRecordFilterSet
+
+    def get_queryset(self):
+        """Annotate the comparison with Nautobot DNS Models (records visible to the user only)."""
+        return dns_models.annotate(super().get_queryset(), user=self.request.user)
