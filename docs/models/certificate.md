@@ -19,6 +19,7 @@ A Certificate describes an SSL/TLS certificate. Only the **public** certificate 
 - `key_algorithm` (choice, optional): `RSA`, `ECDSA` or `Ed25519`.
 - `key_size` (integer, optional): Key size in bits.
 - `validation_level` (choice, optional): `DV`, `OV` or `EV`.
+- `dcv_method` (choice, optional): Domain Control Validation method used for the issuance (see [Domain validation](#domain-validation)).
 - `extended_key_usage` (list, optional): Extended Key Usage purposes (RFC 5280): TLS Server Authentication, TLS Client Authentication, Code Signing, Email Protection (S/MIME), Time Stamping, OCSP Signing.
 - `pem` (text, optional): Public certificate in PEM format.
 - `tenant` (Tenant, optional), `description` (string, optional), `comments` (text, optional).
@@ -28,6 +29,19 @@ Computed (read-only): `days_remaining`, `is_expired`, `is_wildcard`.
 A certificate can be the certificate of a Certificate Authority (see [CA certificate](certificateauthority.md#ca-certificate)); its detail view then shows it under its CA in the *Certification chain* panel, marked as *this certificate*. The `is_ca_certificate` filter lists (or excludes) these certificates.
 
 Tags, notes, contacts/teams, custom fields, relationships and change logging are supported through the standard Nautobot features.
+
+## Domain validation
+
+Before issuing a certificate, the Certificate Authority checks that the requester controls the domains (Domain Control Validation, DCV). `dcv_method` records how it was done:
+
+- `DNS (TXT record)`, `DNS (CNAME record)`: record published in the DNS zone;
+- `HTTP (file on the web server)`;
+- `Email`;
+- `ACME dns-01`, `ACME http-01`, `ACME tls-alpn-01`: challenges of the ACME protocol (e.g. Let's Encrypt).
+
+DCV applies to every validation level: `OV` and `EV` certificates add the validation of the organization on top of it. The DNS records involved (for example the `_acme-challenge` CNAME delegation) are tracked as [Domain Validation Records](domainvalidationrecord.md) linked to the certificate, to check they are still in place before a renewal. The detail view shows a *Domain Validation* panel and the table of these records.
+
+Filters: `dcv_method`, `has_domain_validation_records`, `domain_validation_records`.
 
 ## Import from PEM
 
