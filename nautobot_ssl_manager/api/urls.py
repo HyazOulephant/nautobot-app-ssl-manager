@@ -8,6 +8,7 @@ router = OrderedDefaultRouter()
 router.register("certificates", views.CertificateViewSet)
 router.register("certificate-providers", views.CertificateProviderViewSet)
 router.register("certificate-authorities", views.CertificateAuthorityViewSet)
+router.register("domain-validation-records", views.DomainValidationRecordViewSet)
 
 app_name = "nautobot_ssl_manager-api"
 urlpatterns = router.urls

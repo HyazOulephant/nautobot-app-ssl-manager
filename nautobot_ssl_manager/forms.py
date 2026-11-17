@@ -25,7 +25,7 @@ from nautobot.extras.models import Status
 from nautobot.tenancy.forms import TenancyFilterForm, TenancyForm
 from nautobot.tenancy.models import Tenant
 
-from nautobot_ssl_manager import bundles, choices, issuers, models, utils
+from nautobot_ssl_manager import bundles, choices, dns_models, issuers, models, utils
 
 #
 # Certificate Providers
@@ -365,6 +365,7 @@ class CertificateForm(NautobotModelForm, TenancyForm):  # pylint: disable=too-ma
         "key_size",
         "extended_key_usage",
         "validation_level",
+        "dcv_method",
         "serial_number",
         "fingerprint_sha256",
         "pem",
@@ -429,6 +430,12 @@ class CertificateBulkEditForm(  # pylint: disable=too-many-ancestors
     validation_level = forms.ChoiceField(
         choices=add_blank_choice(choices.ValidationLevelChoices), required=False, widget=StaticSelect2()
     )
+    dcv_method = forms.ChoiceField(
+        choices=add_blank_choice(choices.DomainValidationMethodChoices),
+        required=False,
+        widget=StaticSelect2(),
+        label="DCV method",
+    )
     order_number = forms.CharField(required=False, max_length=CHARFIELD_MAX_LENGTH)
     description = forms.CharField(required=False, max_length=CHARFIELD_MAX_LENGTH)
     tenant = DynamicModelChoiceField(queryset=Tenant.objects.all(), required=False)
@@ -441,6 +448,7 @@ class CertificateBulkEditForm(  # pylint: disable=too-many-ancestors
             "certificate_authority",
             "auto_renew",
             "validation_level",
+            "dcv_method",
             "order_number",
             "description",
             "tenant",
@@ -464,6 +472,8 @@ class CertificateFilterForm(  # pylint: disable=too-many-ancestors
         "expired",
         "auto_renew",
         "validation_level",
+        "dcv_method",
+        "has_domain_validation_records",
         "key_algorithm",
         "extended_key_usage",
         "tenant_group",
@@ -491,6 +501,17 @@ class CertificateFilterForm(  # pylint: disable=too-many-ancestors
     validation_level = forms.MultipleChoiceField(
         choices=choices.ValidationLevelChoices, required=False, widget=StaticSelect2Multiple()
     )
+    dcv_method = forms.MultipleChoiceField(
+        choices=choices.DomainValidationMethodChoices,
+        required=False,
+        widget=StaticSelect2Multiple(),
+        label="DCV method",
+    )
+    has_domain_validation_records = forms.NullBooleanField(
+        required=False,
+        widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES),
+        label="Has domain validation records",
+    )
     key_algorithm = forms.MultipleChoiceField(
         choices=choices.KeyAlgorithmChoices, required=False, widget=StaticSelect2Multiple()
     )
@@ -501,6 +522,110 @@ class CertificateFilterForm(  # pylint: disable=too-many-ancestors
         label="Extended Key Usage",
     )
     tags = TagFilterField(model)
+
+
+#
+# Domain Validation Records
+#
+
+
+class DomainValidationRecordForm(NautobotModelForm, TenancyForm):  # pylint: disable=too-many-ancestors
+    """DomainValidationRecord creation/edit form."""
+
+    certificates = DynamicModelMultipleChoiceField(
+        queryset=models.Certificate.objects.all(),
+        required=False,
+        help_text="Certificates validated with this record",
+    )
+    description = forms.CharField(required=False, widget=SmallTextarea)
+
+    field_order = [
+        "record_type",
+        "name",
+        "zone_name",
+        "text",
+        "alias",
+        "ttl",
+        "certificates",
+        "description",
+        "comment",
+        "tenant_group",
+        "tenant",
+        "tags",
+    ]
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.DomainValidationRecord
+        fields = "__all__"
+
+
+class DomainValidationRecordBulkEditForm(TagsBulkEditFormMixin, NautobotBulkEditForm):  # pylint: disable=too-many-ancestors
+    """DomainValidationRecord bulk edit form."""
+
+    pk = forms.ModelMultipleChoiceField(
+        queryset=models.DomainValidationRecord.objects.all(), widget=forms.MultipleHiddenInput
+    )
+    ttl = forms.IntegerField(required=False, min_value=0, max_value=models.UINT32_MAX, label="TTL")
+    description = forms.CharField(required=False, widget=SmallTextarea)
+    comment = forms.CharField(required=False, max_length=models.DNS_NAME_MAX_LENGTH)
+    tenant = DynamicModelChoiceField(queryset=Tenant.objects.all(), required=False)
+
+    class Meta:
+        """Meta attributes."""
+
+        nullable_fields = ["ttl", "description", "comment", "tenant"]
+
+
+class DomainValidationRecordFilterForm(NautobotFilterForm, TenancyFilterForm):  # pylint: disable=too-many-ancestors
+    """Filter form for DomainValidationRecord."""
+
+    model = models.DomainValidationRecord
+    field_order = [
+        "q",
+        "fqdn",
+        "record_type",
+        "zone_name",
+        "certificates",
+        "has_certificates",
+        "certificate_expires_within_days",
+        "dns_models_match",
+        "tenant_group",
+        "tenant",
+    ]
+
+    q = forms.CharField(required=False, label="Search")
+    fqdn = forms.CharField(required=False, label="FQDN (exact)")
+    record_type = forms.MultipleChoiceField(
+        choices=choices.DNSRecordTypeChoices, required=False, widget=StaticSelect2Multiple(), label="Type"
+    )
+    zone_name = forms.CharField(required=False, label="Zone")
+    certificates = DynamicModelMultipleChoiceField(
+        queryset=models.Certificate.objects.all(),
+        to_field_name="name",
+        required=False,
+    )
+    has_certificates = forms.NullBooleanField(
+        required=False, widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES), label="Has certificates"
+    )
+    certificate_expires_within_days = forms.IntegerField(
+        required=False, min_value=0, label="Has a certificate expiring within N days"
+    )
+    dns_models_match = forms.MultipleChoiceField(
+        choices=choices.DNSModelsMatchChoices,
+        required=False,
+        widget=StaticSelect2Multiple(),
+        label="Nautobot DNS Models",
+        help_text="Only available when Nautobot DNS Models is installed",
+    )
+    tags = TagFilterField(model)
+
+    def __init__(self, *args, **kwargs):
+        """Hide the comparison with Nautobot DNS Models when it is not installed."""
+        super().__init__(*args, **kwargs)
+        if not dns_models.is_installed():
+            del self.fields["dns_models_match"]
 
 
 class CertificateImportPEMForm(forms.Form):  # pylint: disable=nb-incorrect-base-class

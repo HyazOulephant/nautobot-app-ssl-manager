@@ -6,7 +6,11 @@ This document describes external dependencies and prerequisites for this App to 
 
 ### From the App to Other Systems
 
-The app does not connect to any external system: it does not contact Certificate Authorities, providers or the endpoints using the certificates. PEM certificates are parsed locally with the [`cryptography`](https://cryptography.io/) library.
+The app does not connect to any external system: it does not contact Certificate Authorities, providers, DNS servers or the endpoints using the certificates. PEM certificates are parsed locally with the [`cryptography`](https://cryptography.io/) library.
+
+### Nautobot DNS Models (optional)
+
+When [Nautobot DNS Models](https://github.com/nautobot/nautobot-app-dns-models) is installed in the same Nautobot, the Domain Validation Records are compared with its TXT / CNAME records (read only, within Nautobot, with the permissions of the user). See [Domain Validation Record](../models/domainvalidationrecord.md#nautobot-dns-models-optional).
 
 ### From Other Systems to the App
 
@@ -19,11 +23,13 @@ External tools can read and write the inventory through the Nautobot REST API an
 | Certificate | `/api/plugins/nautobot-ssl-manager/certificates/` |
 | Certificate Authority | `/api/plugins/nautobot-ssl-manager/certificate-authorities/` |
 | Certificate Provider | `/api/plugins/nautobot-ssl-manager/certificate-providers/` |
+| Domain Validation Record | `/api/plugins/nautobot-ssl-manager/domain-validation-records/` |
 
 The filters described in the [data models](../models/certificate.md) pages are available as query parameters. Read-only computed fields are included in the responses:
 
 - Certificate: `days_remaining`, `is_expired`, `is_wildcard`;
-- Certificate Authority: `chain_role`.
+- Certificate Authority: `chain_role`;
+- Domain Validation Record: `fqdn`, `dns_models_match` (`present`, `different`, `absent`, or `null` when Nautobot DNS Models is not installed).
 
 Example: list the certificates expiring within 30 days.
 

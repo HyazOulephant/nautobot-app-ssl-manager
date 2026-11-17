@@ -55,10 +55,19 @@ Then restart (if necessary) the Nautobot services which may include:
 sudo systemctl restart nautobot nautobot-worker nautobot-scheduler
 ```
 
+### Optional: Nautobot DNS Models
+
+The app can compare its [Domain Validation Records](../models/domainvalidationrecord.md#nautobot-dns-models-optional) with the records of [Nautobot DNS Models](https://github.com/nautobot/nautobot-app-dns-models). This integration is optional: it is enabled as soon as `nautobot_dns_models` is installed and in `PLUGINS`, and nothing changes in the app database when it is added or removed (no migration depends on it).
+
+```python
+# In your nautobot_config.py
+PLUGINS = ["nautobot_ssl_manager", "nautobot_dns_models"]
+```
+
 ## App Configuration
 
 The app does not have any setting: no `PLUGINS_CONFIG` entry is required.
 
 ## Permissions
 
-The app uses the standard Nautobot object permissions on its models (`nautobot_ssl_manager.<action>_certificate`, `..._certificateauthority`, `..._certificateprovider`, with `view`, `add`, `change` and `delete` actions). The *Import from PEM* view requires the `add_certificate` permission.
+The app uses the standard Nautobot object permissions on its models (`nautobot_ssl_manager.<action>_certificate`, `..._certificateauthority`, `..._certificateprovider`, `..._domainvalidationrecord`, with `view`, `add`, `change` and `delete` actions). The *Import from PEM* view requires the `add_certificate` permission.

@@ -1,5 +1,6 @@
 """Nautobot development configuration file."""
 
+import importlib.util
 import os
 import sys
 
@@ -120,6 +121,14 @@ if not _TESTING:
 
 # Enable installed Apps. Add the name of each App to the list.
 PLUGINS = ["nautobot_ssl_manager"]
+
+# Optional integration: Nautobot DNS Models is enabled when installed (dev dependency), to develop and test the
+# comparison of Domain Validation Records with DNS Models. Set NAUTOBOT_SSL_MANAGER_WITHOUT_DNS_MODELS=True to test
+# the app without it.
+if importlib.util.find_spec("nautobot_dns_models") and not is_truthy(
+    os.getenv("NAUTOBOT_SSL_MANAGER_WITHOUT_DNS_MODELS", "False")
+):
+    PLUGINS.append("nautobot_dns_models")
 
 # Apps configuration settings. These settings are used by various Apps that the user may have installed.
 # Each key in the dictionary is the name of an installed App and its value is a dictionary of settings.

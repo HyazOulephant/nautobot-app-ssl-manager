@@ -1,6 +1,7 @@
 """Tables for nautobot_ssl_manager."""
 
 import django_tables2 as tables
+from django.utils.html import format_html
 from nautobot.apps.tables import (
     BaseTable,
     BooleanColumn,
@@ -12,7 +13,7 @@ from nautobot.apps.tables import (
 )
 from nautobot.tenancy.tables import TenantColumn
 
-from nautobot_ssl_manager import models
+from nautobot_ssl_manager import choices, dns_models, models
 
 # Same rendering as Nautobot core tree tables (Tenant Groups, Locations...): one dot per tree level,
 # hidden as soon as the table is sorted on a column.
@@ -140,6 +141,12 @@ class CertificateTable(StatusTableMixin, BaseTable):
     auto_renew = BooleanColumn(verbose_name="Auto-renew")
     replaces = tables.Column(linkify=True)
     validation_level = tables.Column()
+    dcv_method = tables.Column(verbose_name="DCV method")
+    domain_validation_record_count = LinkedCountColumn(
+        viewname="plugins:nautobot_ssl_manager:domainvalidationrecord_list",
+        url_params={"certificates": "pk"},
+        verbose_name="Domain Validation Records",
+    )
     key_algorithm = tables.Column()
     tenant = TenantColumn()
     tags = TagColumn(url_name="plugins:nautobot_ssl_manager:certificate_list")
@@ -165,6 +172,8 @@ class CertificateTable(StatusTableMixin, BaseTable):
             "key_algorithm",
             "key_size",
             "validation_level",
+            "dcv_method",
+            "domain_validation_record_count",
             "serial_number",
             "fingerprint_sha256",
             "tenant",
@@ -188,3 +197,99 @@ class CertificateTable(StatusTableMixin, BaseTable):
     def render_subject_alternative_names(self, value):
         """Render the SAN count rather than the full list."""
         return len(value) if value else "—"
+
+
+DNS_MODELS_MATCH_BADGES = {
+    choices.DNSModelsMatchChoices.PRESENT: "bg-success",
+    choices.DNSModelsMatchChoices.DIFFERENT: "bg-warning",
+    choices.DNSModelsMatchChoices.ABSENT: "bg-danger",
+}
+
+
+def dns_models_match_badge(value):
+    """Badge of a comparison state with Nautobot DNS Models."""
+    if not value:
+        return format_html("{}", "—")
+    label = choices.DNSModelsMatchChoices.as_dict().get(value, value)
+    return format_html('<span class="badge {}">{}</span>', DNS_MODELS_MATCH_BADGES.get(value, "bg-secondary"), label)
+
+
+class DomainValidationRecordTable(BaseTable):
+    # pylint: disable=R0903
+    """Table for DomainValidationRecord list view."""
+
+    pk = ToggleColumn()
+    name = tables.Column(linkify=True, empty_values=())
+    fqdn = tables.Column(verbose_name="FQDN", order_by=("zone_name", "name"))
+    record_type = tables.Column(verbose_name="Type")
+    zone_name = tables.Column(verbose_name="Zone")
+    value = tables.Column(verbose_name="Value", order_by=("alias", "text"))
+    ttl = tables.Column(verbose_name="TTL")
+    certificates = tables.ManyToManyColumn(linkify_item=True, verbose_name="Certificates")
+    certificate_count = LinkedCountColumn(
+        viewname="plugins:nautobot_ssl_manager:certificate_list",
+        url_params={"domain_validation_records": "pk"},
+        verbose_name="Certificate count",
+    )
+    # Annotated by the list view; computed per row otherwise (e.g. table of the records of a certificate).
+    dns_models_match = tables.Column(
+        accessor=dns_models.ANNOTATION, verbose_name="Nautobot DNS Models", empty_values=()
+    )
+    tenant = TenantColumn()
+    tags = TagColumn(url_name="plugins:nautobot_ssl_manager:domainvalidationrecord_list")
+    actions = ButtonsColumn(models.DomainValidationRecord)
+
+    class Meta(BaseTable.Meta):
+        """Meta attributes."""
+
+        model = models.DomainValidationRecord
+        fields = (
+            "pk",
+            "name",
+            "zone_name",
+            "fqdn",
+            "record_type",
+            "value",
+            "ttl",
+            "certificates",
+            "certificate_count",
+            "dns_models_match",
+            "tenant",
+            "description",
+            "comment",
+            "tags",
+            "actions",
+        )
+        default_columns = (
+            "pk",
+            "name",
+            "zone_name",
+            "record_type",
+            "value",
+            "certificates",
+            "dns_models_match",
+            "tenant",
+            "actions",
+        )
+
+    def __init__(self, *args, **kwargs):
+        """Without Nautobot DNS Models, the comparison column is hidden (`base_columns` must not be modified)."""
+        super().__init__(*args, **kwargs)
+        if not dns_models.is_installed():
+            self.columns.hide("dns_models_match")
+
+    def render_name(self, record, value):
+        """Name relative to the zone, `@` for the zone apex (as in zone files)."""
+        return format_html('<a href="{}">{}</a>', record.get_absolute_url(), value or "@")
+
+    def render_value(self, value):
+        """Value of the record in monospace."""
+        return format_html("<code>{}</code>", value) if value else "—"
+
+    def render_dns_models_match(self, record, value):
+        """State as a colored badge (only the DNS Models records visible to the user are considered)."""
+        user = getattr(getattr(self, "request", None), "user", None)
+        if value is None and user is not None and dns_models.is_installed():
+            comparison = dns_models.compare(record, user=user)
+            value = comparison.state if comparison else None
+        return dns_models_match_badge(value)

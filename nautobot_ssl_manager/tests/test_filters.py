@@ -151,7 +151,7 @@ class CertificateFilterTestCase(  # pylint: disable=too-many-ancestors
     @classmethod
     def setUpTestData(cls):
         """Create test data."""
-        fixtures.create_certificates()
+        fixtures.create_domain_validation_records()
         fixtures.create_ca_certificate()
 
     def test_q_search(self):

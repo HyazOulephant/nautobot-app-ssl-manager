@@ -85,7 +85,7 @@ class CertificateAPIViewTest(APIViewTestCases.APIViewTestCase):
     """Test the API viewsets for Certificate."""
 
     model = models.Certificate
-    choices_fields = ("key_algorithm", "validation_level")
+    choices_fields = ("dcv_method", "key_algorithm", "validation_level")
     # "sha256" is part of the public `fingerprint_sha256` field name, not a password hash.
     VERBOTEN_STRINGS = tuple(
         verboten for verboten in APIViewTestCases.APIViewTestCase.VERBOTEN_STRINGS if verboten != "sha256"
@@ -145,3 +145,48 @@ class CertificateAPIViewTest(APIViewTestCases.APIViewTestCase):
         response = self.client.post(self._get_list_url(), data, format="json", **self.header)
         self.assertHttpStatus(response, 201)
         self.assertEqual(response.json()["subject_alternative_names"], ["www.example.com"])
+
+
+class DomainValidationRecordAPIViewTest(APIViewTestCases.APIViewTestCase):
+    # pylint: disable=too-many-ancestors
+    """Test the API viewsets for DomainValidationRecord."""
+
+    model = models.DomainValidationRecord
+    choices_fields = ("record_type",)
+    # Many-to-many fields are write-only by default in Nautobot REST API responses (see `exclude_m2m`).
+    validation_excluded_fields = ["certificates"]
+    # "sha256" is part of the `fingerprint_sha256` field name of the nested certificates, not a password hash.
+    VERBOTEN_STRINGS = tuple(
+        verboten for verboten in APIViewTestCases.APIViewTestCase.VERBOTEN_STRINGS if verboten != "sha256"
+    )
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data."""
+        super().setUpTestData()
+        fixtures.create_domain_validation_records()
+        certificate = models.Certificate.objects.get(name="www.example.com 2026")
+        tenant = fixtures.create_tenants()[0]
+        cls.create_data = [
+            {
+                "record_type": "CNAME",
+                "name": "_acme-challenge.shop",
+                "zone_name": "example.com",
+                "alias": "shop.acme-dns.example.net",
+                "certificates": [certificate.pk],
+            },
+            {"record_type": "TXT", "name": "_validation", "zone_name": "example.org", "text": "token", "ttl": 300},
+            {"record_type": "TXT", "name": "", "zone_name": "example.net", "tenant": tenant.pk, "comment": "Apex"},
+        ]
+        cls.update_data = {"description": "Updated", "ttl": 900}
+        cls.bulk_update_data = {"description": "Bulk updated"}
+
+    def test_computed_fields(self):
+        """FQDN and comparison with Nautobot DNS Models are read-only fields."""
+        self.add_permissions("nautobot_ssl_manager.view_domainvalidationrecord")
+        record = models.DomainValidationRecord.objects.get(name="_acme-challenge")
+        response = self.client.get(self._get_detail_url(record), **self.header)
+        self.assertHttpStatus(response, 200)
+        self.assertEqual(response.data["fqdn"], "_acme-challenge.example.com")
+        self.assertIn("dns_models_match", response.data)
+        self.assertNotIn("_value_hash", response.data)

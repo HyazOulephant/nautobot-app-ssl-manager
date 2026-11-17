@@ -54,6 +54,24 @@ menu_items = (
                     ),
                 ),
             ),
+            NavMenuGroup(
+                name="Domain Validation",
+                weight=200,
+                items=(
+                    NavMenuItem(
+                        link="plugins:nautobot_ssl_manager:domainvalidationrecord_list",
+                        name="DNS Validation Records",
+                        weight=100,
+                        permissions=["nautobot_ssl_manager.view_domainvalidationrecord"],
+                        buttons=(
+                            NavMenuAddButton(
+                                link="plugins:nautobot_ssl_manager:domainvalidationrecord_add",
+                                permissions=["nautobot_ssl_manager.add_domainvalidationrecord"],
+                            ),
+                        ),
+                    ),
+                ),
+            ),
         ),
     ),
 )

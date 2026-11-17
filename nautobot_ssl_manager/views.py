@@ -27,7 +27,18 @@ from nautobot.core.views.utils import get_obj_from_context
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from nautobot_ssl_manager import bundles, choices, downloads, filters, forms, issuers, models, tables, utils
+from nautobot_ssl_manager import (
+    bundles,
+    choices,
+    dns_models,
+    downloads,
+    filters,
+    forms,
+    issuers,
+    models,
+    tables,
+    utils,
+)
 from nautobot_ssl_manager.api import serializers
 
 
@@ -425,6 +436,21 @@ class CertificateUIViewSet(NautobotUIViewSet):
                 ],
                 value_transforms={"extended_key_usage": [render_eku]},
             ),
+            ObjectFieldsPanel(
+                weight=250,
+                section=SectionChoices.LEFT_HALF,
+                label="Domain Validation",
+                fields=["dcv_method", "validation_level"],
+            ),
+            ObjectsTablePanel(
+                weight=250,
+                section=SectionChoices.FULL_WIDTH,
+                table_class=tables.DomainValidationRecordTable,
+                table_filter="certificates",
+                table_title="Domain Validation Records",
+                exclude_columns=["certificates", "certificate_count"],
+                prefetch_related_fields=["certificates"],
+            ),
             ObjectsTablePanel(
                 weight=300,
                 section=SectionChoices.FULL_WIDTH,
@@ -585,3 +611,84 @@ class CertificateUIViewSet(NautobotUIViewSet):
                 target = certificates[-1] if certificates else changed[-1]
                 return redirect(target.get_absolute_url())
         return self._render_bundle_review(request, form)
+
+
+class DNSModelsPanel(Panel):
+    """Comparison of a Domain Validation Record with Nautobot DNS Models (only rendered when it is installed)."""
+
+    body_content_template_path = "nautobot_ssl_manager/inc/dns_models_comparison.html"
+    label = "Nautobot DNS Models"
+
+    def should_render(self, context):
+        """Rendered only when Nautobot DNS Models is installed."""
+        return dns_models.is_installed() and super().should_render(context)
+
+    def get_extra_context(self, context):
+        """Comparison state, matching DNS Models records and creation link (records visible to the user only)."""
+        obj = get_obj_from_context(context)
+        user = context["request"].user
+        comparison = dns_models.compare(obj, user=user)
+        create_url = None
+        if comparison is not None and comparison.state == choices.DNSModelsMatchChoices.ABSENT:
+            model = dns_models.get_record_model(obj.record_type)
+            if user.has_perm(f"{model._meta.app_label}.add_{model._meta.model_name}"):
+                create_url = dns_models.get_create_url(obj, user=user)
+        return {
+            **super().get_extra_context(context),
+            "comparison": comparison,
+            "state_badge": tables.dns_models_match_badge(comparison.state) if comparison else "",
+            "create_url": create_url,
+        }
+
+
+class DomainValidationRecordUIViewSet(NautobotUIViewSet):
+    """ViewSet for DomainValidationRecord views."""
+
+    bulk_update_form_class = forms.DomainValidationRecordBulkEditForm
+    filterset_class = filters.DomainValidationRecordFilterSet
+    filterset_form_class = forms.DomainValidationRecordFilterForm
+    form_class = forms.DomainValidationRecordForm
+    lookup_field = "pk"
+    queryset = models.DomainValidationRecord.objects.prefetch_related("certificates")
+    serializer_class = serializers.DomainValidationRecordSerializer
+    table_class = tables.DomainValidationRecordTable
+
+    object_detail_content = ObjectDetailContent(
+        panels=[
+            ObjectFieldsPanel(
+                weight=100,
+                section=SectionChoices.LEFT_HALF,
+                fields=[
+                    "record_type",
+                    "name",
+                    "zone_name",
+                    "fqdn",
+                    "text",
+                    "alias",
+                    "ttl",
+                    "tenant",
+                    "description",
+                    "comment",
+                ],
+                key_transforms={"fqdn": "FQDN"},
+            ),
+            DNSModelsPanel(
+                weight=100,
+                section=SectionChoices.RIGHT_HALF,
+            ),
+            ObjectsTablePanel(
+                weight=200,
+                section=SectionChoices.FULL_WIDTH,
+                table_class=tables.CertificateTable,
+                table_filter="domain_validation_records",
+                table_title="Certificates",
+            ),
+        ],
+    )
+
+    def get_queryset(self):
+        """Annotate the comparison with Nautobot DNS Models for the list view (records visible to the user only)."""
+        queryset = super().get_queryset()
+        if self.action == "list":
+            queryset = dns_models.annotate(queryset, user=self.request.user)
+        return queryset
