@@ -9,11 +9,18 @@ from nautobot.tenancy.models import Tenant, TenantGroup
 
 from nautobot_ssl_manager.choices import (
     CertificateAuthorityTypeChoices,
+    DNSRecordTypeChoices,
+    DomainValidationMethodChoices,
     ExtendedKeyUsageChoices,
     KeyAlgorithmChoices,
     ValidationLevelChoices,
 )
-from nautobot_ssl_manager.models import Certificate, CertificateAuthority, CertificateProvider
+from nautobot_ssl_manager.models import (
+    Certificate,
+    CertificateAuthority,
+    CertificateProvider,
+    DomainValidationRecord,
+)
 
 
 def create_tenants():
@@ -213,3 +220,50 @@ def create_ca_certificate():
     lab_root.certificate = certificate
     lab_root.validated_save()
     return certificate
+
+
+def create_domain_validation_records():
+    """Create DomainValidationRecord objects linked to certificates (and the certificates) for tests."""
+    create_certificates()
+    tenant_one, tenant_two, _ = create_tenants()
+    old_www = Certificate.objects.get(name="www.example.com 2025")
+    www = Certificate.objects.get(name="www.example.com 2026")
+    edge = Certificate.objects.get(name="Wildcard edge")
+    Certificate.objects.filter(pk__in=[old_www.pk, www.pk]).update(dcv_method=DomainValidationMethodChoices.ACME_DNS_01)
+    Certificate.objects.filter(pk=edge.pk).update(dcv_method=DomainValidationMethodChoices.DNS_TXT)
+
+    delegation = DomainValidationRecord.objects.create(
+        record_type=DNSRecordTypeChoices.CNAME,
+        name="_acme-challenge",
+        zone_name="example.com",
+        alias="example-com.acme-dns.example.net",
+        ttl=300,
+        tenant=tenant_one,
+        description="ACME dns-01 delegation",
+        comment="Managed by the web team",
+    )
+    delegation.certificates.set([old_www, www])
+    edge_txt = DomainValidationRecord.objects.create(
+        record_type=DNSRecordTypeChoices.TXT,
+        name="_acme-challenge.edge",
+        zone_name="example.com",
+        tenant=tenant_two,
+        description="Value changes at each issuance",
+    )
+    edge_txt.certificates.set([edge])
+    apex_txt = DomainValidationRecord.objects.create(
+        record_type=DNSRecordTypeChoices.TXT,
+        name="",
+        zone_name="example.com",
+        text="dv-token-123",
+        ttl=3600,
+        comment="Sectigo DCV token",
+    )
+    apex_txt.certificates.set([www])
+    DomainValidationRecord.objects.create(
+        record_type=DNSRecordTypeChoices.CNAME,
+        name="_acme-challenge.api",
+        zone_name="example.com",
+        alias="api.acme-dns.example.net",
+        description="Not linked yet",
+    )

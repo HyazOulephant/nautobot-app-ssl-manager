@@ -1,6 +1,7 @@
 """Models for Nautobot SSL Manager."""
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.validators import MaxValueValidator
 from django.db import models
 from django.utils import timezone
 from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
@@ -10,6 +11,8 @@ from tree_queries.fields import TreeNodeForeignKey
 from nautobot_ssl_manager import utils
 from nautobot_ssl_manager.choices import (
     CertificateAuthorityTypeChoices,
+    DNSRecordTypeChoices,
+    DomainValidationMethodChoices,
     ExtendedKeyUsageChoices,
     KeyAlgorithmChoices,
     ValidationLevelChoices,
@@ -250,6 +253,13 @@ class Certificate(PrimaryModel):  # pylint: disable=too-many-ancestors
     key_algorithm = models.CharField(max_length=50, choices=KeyAlgorithmChoices, blank=True)
     key_size = models.PositiveIntegerField(blank=True, null=True)
     validation_level = models.CharField(max_length=50, choices=ValidationLevelChoices, blank=True)
+    dcv_method = models.CharField(
+        max_length=50,
+        choices=DomainValidationMethodChoices,
+        blank=True,
+        verbose_name="DCV method",
+        help_text="Domain Control Validation method used for the issuance",
+    )
     extended_key_usage = models.JSONField(default=list, blank=True, verbose_name="Extended Key Usage")
     pem = models.TextField(blank=True, verbose_name="PEM", help_text="Public certificate only")
     tenant = models.ForeignKey(
@@ -406,6 +416,150 @@ class Certificate(PrimaryModel):  # pylint: disable=too-many-ancestors
             fields = {"pem": "pem", "issuer": "certificate_authority"}
             for kind, message in ca_certificate_inconsistencies(authority, self):
                 errors.setdefault(fields[kind], []).append(message)
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        """Normalize data before saving."""
+        self._normalize()
+        super().save(*args, **kwargs)
+
+
+# Same limits as Nautobot DNS Models, to copy the values without loss.
+DNS_NAME_MAX_LENGTH = 200
+DNS_TXT_MAX_LENGTH = 256
+UINT32_MAX = 2**32 - 1
+
+
+@extras_features(
+    "custom_links",
+    "custom_validators",
+    "export_templates",
+    "graphql",
+    "webhooks",
+)
+class DomainValidationRecord(PrimaryModel):  # pylint: disable=too-many-ancestors
+    """DNS record used for the Domain Control Validation (DCV) of certificates (e.g. `_acme-challenge` CNAME).
+
+    Fields follow the conventions of Nautobot DNS Models (`TXTRecord`, `CNAMERecord`) so that a record can be copied
+    from one app to the other, but the app does not depend on it: the zone is stored as a name, not as a `DNSZone`.
+    """
+
+    record_type = models.CharField(max_length=10, choices=DNSRecordTypeChoices, verbose_name="Type")
+    name = models.CharField(
+        max_length=DNS_NAME_MAX_LENGTH,
+        blank=True,
+        help_text="Name of the record relative to the zone (e.g. _acme-challenge), empty for the zone apex. "
+        "A name ending with the zone and a dot (e.g. _acme-challenge.example.com.) is made relative.",
+    )
+    zone_name = models.CharField(
+        max_length=DNS_NAME_MAX_LENGTH,
+        verbose_name="Zone",
+        help_text="FQDN of the DNS zone (e.g. example.com)",
+    )
+    text = models.CharField(
+        max_length=DNS_TXT_MAX_LENGTH,
+        blank=True,
+        help_text="TXT records only. Leave empty when the value changes at each issuance (e.g. ACME dns-01).",
+    )
+    alias = models.CharField(
+        max_length=DNS_NAME_MAX_LENGTH,
+        blank=True,
+        help_text="CNAME records only: FQDN of the alias (e.g. delegation of _acme-challenge to another zone)",
+    )
+    ttl = models.PositiveBigIntegerField(
+        validators=[MaxValueValidator(UINT32_MAX)],
+        blank=True,
+        null=True,
+        verbose_name="TTL",
+        help_text="Time To Live (if no value is given, the zone TTL is used)",
+    )
+    certificates = models.ManyToManyField(
+        to="nautobot_ssl_manager.Certificate",
+        related_name="domain_validation_records",
+        blank=True,
+        help_text="Certificates validated with this record",
+    )
+    tenant = models.ForeignKey(
+        to="tenancy.Tenant",
+        on_delete=models.PROTECT,
+        related_name="domain_validation_records",
+        blank=True,
+        null=True,
+    )
+    description = models.TextField(blank=True)
+    comment = models.CharField(max_length=DNS_NAME_MAX_LENGTH, blank=True)
+
+    clone_fields = ["record_type", "zone_name", "tenant"]
+
+    # The unique constraint involves several optional fields: use the primary key as natural key.
+    natural_key_field_names = ["pk"]
+
+    class Meta:
+        """Meta class."""
+
+        ordering = ["zone_name", "name", "record_type"]
+        verbose_name = "Domain Validation Record"
+        verbose_name_plural = "Domain Validation Records"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["record_type", "name", "zone_name", "text", "alias"],
+                name="nautobot_ssl_manager_domainvalidationrecord_unique",
+            ),
+        ]
+
+    def __str__(self):
+        """Stringify instance."""
+        return f"{self.fqdn} {self.record_type}"
+
+    @property
+    def fqdn(self):
+        """Fully qualified name of the record (zone apex when the name is empty)."""
+        return f"{self.name}.{self.zone_name}" if self.name else self.zone_name
+
+    @property
+    def value(self):
+        """Value of the record: text of a TXT record, alias of a CNAME record."""
+        return self.alias if self.record_type == DNSRecordTypeChoices.CNAME else self.text
+
+    def _normalize(self):
+        """Normalize the names (safe to call several times, invalid values are reported by clean()).
+
+        As in Nautobot DNS Models, the letter case is kept (DNS names are compared ignoring the case) and only a name
+        ending with the zone and a dot is zone-qualified; it is made relative to the zone here.
+        """
+        self.zone_name = str(self.zone_name or "").strip().rstrip(".")
+        name = str(self.name or "").strip()
+        if self.zone_name and name.lower().endswith(f"{self.zone_name.lower()}."):
+            name = name[: -len(self.zone_name) - 1]
+        self.name = name.rstrip(".")
+        self.alias = str(self.alias or "").strip().rstrip(".")
+        self.text = str(self.text or "").strip()
+
+    def clean_fields(self, exclude=None):
+        """Normalize values before Django's field validation."""
+        self._normalize()
+        super().clean_fields(exclude=exclude)
+
+    def clean(self):
+        """Validate the names and the value expected by the record type."""
+        super().clean()
+        self._normalize()
+        errors = {}
+        for field in ("name", "zone_name", "alias"):
+            try:
+                utils.normalize_dns_record_name(getattr(self, field))
+            except ValueError as exc:
+                errors[field] = str(exc)
+        if not self.zone_name and "zone_name" not in errors:
+            errors["zone_name"] = "This field is required."
+        if self.record_type == DNSRecordTypeChoices.CNAME:
+            if not self.alias and "alias" not in errors:
+                errors["alias"] = "The alias is required for a CNAME record."
+            if self.text:
+                errors["text"] = "A CNAME record has no text."
+        elif self.record_type == DNSRecordTypeChoices.TXT and self.alias:
+            errors["alias"] = "A TXT record has no alias."
         if errors:
             raise ValidationError(errors)
 

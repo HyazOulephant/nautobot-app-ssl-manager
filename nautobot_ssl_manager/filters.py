@@ -14,7 +14,7 @@ from nautobot.apps.filters import (
     TenancyModelFilterSetMixin,
 )
 
-from nautobot_ssl_manager import choices, models, utils
+from nautobot_ssl_manager import choices, dns_models, models, utils
 
 
 class CertificateProviderFilterSet(TenancyModelFilterSetMixin, NautobotFilterSet):  # pylint: disable=too-many-ancestors
@@ -146,6 +146,16 @@ class CertificateFilterSet(  # pylint: disable=too-many-ancestors
     )
     key_algorithm = django_filters.MultipleChoiceFilter(choices=choices.KeyAlgorithmChoices)
     validation_level = django_filters.MultipleChoiceFilter(choices=choices.ValidationLevelChoices)
+    dcv_method = django_filters.MultipleChoiceFilter(choices=choices.DomainValidationMethodChoices)
+    domain_validation_records = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=models.DomainValidationRecord.objects.all(),
+        to_field_name="pk",
+        label="Domain Validation Records (ID)",
+    )
+    has_domain_validation_records = RelatedMembershipBooleanFilter(
+        field_name="domain_validation_records",
+        label="Has domain validation records",
+    )
     expired = django_filters.BooleanFilter(method="filter_expired", label="Expired")
     expires_within_days = django_filters.NumberFilter(
         method="filter_expires_within_days", label="Expires within N days (not yet expired)"
@@ -189,3 +199,77 @@ class CertificateFilterSet(  # pylint: disable=too-many-ancestors
             return queryset
         now = timezone.now()
         return queryset.filter(not_after__gt=now, not_after__lte=now + timedelta(days=int(value)))
+
+
+class DomainValidationRecordFilterSet(TenancyModelFilterSetMixin, NautobotFilterSet):  # pylint: disable=too-many-ancestors
+    """Filter for DomainValidationRecord."""
+
+    q = SearchFilter(
+        filter_predicates={
+            "name": "icontains",
+            "zone_name": "icontains",
+            "text": "icontains",
+            "alias": "icontains",
+            "description": "icontains",
+            "comment": "icontains",
+        },
+    )
+    record_type = django_filters.MultipleChoiceFilter(choices=choices.DNSRecordTypeChoices)
+    fqdn = django_filters.CharFilter(method="filter_fqdn", label="FQDN (exact)")
+    certificates = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=models.Certificate.objects.all(),
+        to_field_name="name",
+        label="Certificates (name or ID)",
+    )
+    has_certificates = RelatedMembershipBooleanFilter(
+        field_name="certificates",
+        label="Has certificates",
+    )
+    certificate_expires_within_days = django_filters.NumberFilter(
+        method="filter_certificate_expires_within_days",
+        label="Has a certificate expiring within N days (not yet expired)",
+    )
+    dns_models_match = django_filters.MultipleChoiceFilter(
+        choices=choices.DNSModelsMatchChoices,
+        method="filter_dns_models_match",
+        label="Nautobot DNS Models",
+    )
+
+    class Meta:
+        """Meta attributes for filter."""
+
+        model = models.DomainValidationRecord
+        fields = "__all__"
+
+    def filter_fqdn(self, queryset, name, value):  # pylint: disable=unused-argument
+        """Records whose fully qualified name is exactly this one."""
+        if not value:
+            return queryset
+        try:
+            value = utils.normalize_dns_record_name(value)
+        except ValueError:
+            return queryset.none()
+        # The split between the record name and the zone is unknown: try each position (zone apex included).
+        labels = value.split(".")
+        query = Q(name="", zone_name__iexact=value)
+        for index in range(1, len(labels)):
+            query |= Q(name__iexact=".".join(labels[:index]), zone_name__iexact=".".join(labels[index:]))
+        return queryset.filter(query)
+
+    def filter_certificate_expires_within_days(self, queryset, name, value):  # pylint: disable=unused-argument
+        """Records linked to a certificate not yet expired and expiring within the given number of days."""
+        if value is None:
+            return queryset
+        now = timezone.now()
+        return queryset.filter(
+            certificates__not_after__gt=now, certificates__not_after__lte=now + timedelta(days=int(value))
+        ).distinct()
+
+    def filter_dns_models_match(self, queryset, name, value):  # pylint: disable=unused-argument
+        """Records present, different or absent in Nautobot DNS Models (no filtering when it is not installed)."""
+        if not value or not dns_models.is_installed():
+            return queryset
+        if dns_models.ANNOTATION not in queryset.query.annotations:
+            request = getattr(self, "request", None)
+            queryset = dns_models.annotate(queryset, user=getattr(request, "user", None))
+        return queryset.filter(**{f"{dns_models.ANNOTATION}__in": value})
