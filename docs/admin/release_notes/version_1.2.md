@@ -4,8 +4,10 @@ This document describes all new features and changes in the release. The format 
 
 ## Release Overview
 
-- Major features or milestones
-- Changes to compatibility with Nautobot and/or other apps, libraries etc.
+- Domain validation: record the Domain Control Validation (DCV) method of each certificate (DNS, HTTP, email, ACME dns-01 / http-01 / tls-alpn-01) and track the DNS records used for validation, such as `_acme-challenge` CNAME delegations, linked to their certificates.
+- Optional integration with Nautobot DNS Models: each Domain Validation Record is compared with the DNS Models records (present, different or absent), computed at display time, with a link to create a missing record. The app keeps working without it.
+- REST API endpoint for Domain Validation Records.
+- Compatible with Nautobot 3.1.0 and higher (3.x). Optional: Nautobot DNS Models 2.3.0 or higher.
 
 <!-- towncrier release notes start -->
 
